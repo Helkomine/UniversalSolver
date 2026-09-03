@@ -93,26 +93,25 @@ contract UniversalSolver {
     // Đây là hàm giải quyết intent, bất kỳ ai cũng có thể gọi hàm này để cung cấp một answer hợp lệ
     // với mỗi intent tương ứng. Việc giải quyết cũng có thể được thực hiện theo lô bằng cách sử dụng
     // các hợp đồng Multicall từ hợp đồng công khai hoặc từ tài khoản cá nhân.
-    function resolve(bytes calldata answer, UserIntent calldata userIntent) public nonReentrant {
-        bool success;
-        bytes memory result;
-
-        resolver = msg.sender;
-
+    function resolve(
+        UserIntent calldata userIntent, 
+        bytes calldata policyAndAnswer
+    ) public nonReentrant {
         // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
         bytes calldata executorAndIntent = 
         userIntent.senderData[userIntent.offset : userIntent.offset + userIntent.length];
-        intentHash = keccak256(executorAndIntent);
 
-        address executor = address(bytes20(executorAndIntent[0 : 20]));
-        bytes calldata intent = executorAndIntent[20 : ];
+        (address executor, bytes calldata intent) = 
+        _getExecutorAndIntent(executorAndIntent);
 
-        // Lưu user hợp lệ để xác minh trong callback.
-        sender = userIntent.sender;
+        (uint8 policy, bytes calldata answer) = 
+        _getFlagAndAnswer(policyAndAnswer);
 
-        _validateOnSender(userIntent.sender, userIntent.senderData);
+        _setContext(userIntent.sender, executorAndIntent, answer);
+
         _setRequesterContext(executor, intent);
         _setResolverContext(answer);
+        _validateOnSender(userIntent.sender, userIntent.senderData);
         _resolveAnswer(answer);
         _validateIntent(executor, intent);
 
@@ -138,6 +137,10 @@ contract UniversalSolver {
     function context() public view returns (
         address _sender,
         address _resolver,
+        bytes32 _intentHash,
+        bytes32 _answerHash,
+        UserIntent memory userIntent,
+        bytes memory answer,
         bytes memory _requesterContext,
         bytes memory _resolverContext
     ) {
@@ -150,6 +153,10 @@ contract UniversalSolver {
         return (
             sender, 
             resolver,
+            intentHash,
+            answerHash,
+            userIntent,
+            answer,
             _requesterContext,
             _resolverContext
         );
@@ -166,13 +173,26 @@ contract UniversalSolver {
     }
 
     function _getFlagAndAnswer(bytes calldata flagAndAnswer) internal pure returns (
-        bool isSetContextForIntent,
+        uint8 policy,
         bytes calldata answer
     ) {
         return (
-            flagAndAnswer[0] != 0,
+            uint8(flagAndAnswer[0]),
             flagAndAnswer[1 : ]
         );
+    }
+
+    function _setContext(
+        address _sender, 
+        bytes calldata executorAndIntent, 
+        bytes calldata answer
+    ) internal {
+        // Lưu user hợp lệ để xác minh trong callback.
+        sender = _sender;
+        resolver = msg.sender;
+        
+        intentHash = keccak256(executorAndIntent);
+        answerHash = keccak256(answer);
     }
 
     function _clearContext() internal {
@@ -193,7 +213,7 @@ contract UniversalSolver {
         // số dư đều được khôi phục làm cho tài khoản user trở lại nguyên trạng.
         require(intentAccepted, IntentNotAccepted());
         // Phát log intent sau khi đã được xác thực hoàn tất.
-        emit ValidateIntentSuccess(intent);
+        emit ValidateIntentSuccess(senderData);
     }
 
     function _setRequesterContext(address executor, bytes calldata intent) internal {
