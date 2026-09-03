@@ -51,11 +51,12 @@ contract UniversalSolver {
         bytes senderData;
     }
 
-    bytes32 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
-    bytes32 constant RESOLVER_CONTEXT_NAMESPACE = erc7201("resolver.context.namespace");
+    uint256 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
+    uint256 constant RESOLVER_CONTEXT_NAMESPACE = erc7201("resolver.context.namespace");
 
     // Lưu trữ intentHash dùng để xác thực intent.
     bytes32 transient intentHash;
+    bytes32 transient answerHash;
     // Lưu trữ user để xác minh trong giai đoạn callback.
     address transient sender;
     address transient resolver;
@@ -67,9 +68,11 @@ contract UniversalSolver {
     error Reentrancy();
     error IntentNotAccepted();
     error InactiveSolver();
+    error CallRequesterContextFailed(address requester, address executor, bytes reason);
+    error CallResolverContextFailed(address resolver, bytes reason);
     error InvalidUser(address user);
-    error IntentAccepted(bytes intent);
-    error InvalidIntent(bytes intent);
+    error IntentAccepted(address executor, bytes intent);
+    error InvalidIntent(address executor, bytes intent);
     error ValidateIntentFailed(bytes result);
     error RequesterFailed(bytes result);
     error SolverFailed(bytes result);
@@ -98,8 +101,11 @@ contract UniversalSolver {
 
         // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
         bytes calldata executorAndIntent = 
-        userIntent.intentAndData[userIntent.offset : userIntent.offset + userIntent.length];
+        userIntent.senderData[userIntent.offset : userIntent.offset + userIntent.length];
         intentHash = keccak256(executorAndIntent);
+
+        address executor = address(bytes20(executorAndIntent[0 : 20]));
+        bytes calldata intent = executorAndIntent[20 : ];
 
         // Lưu user hợp lệ để xác minh trong callback.
         sender = userIntent.sender;
@@ -116,39 +122,21 @@ contract UniversalSolver {
         // Phát log intent sau khi đã được xác thực hoàn tất.
         emit ValidateIntentSuccess(intent);
 
-        // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
-        // giải quyết theo các điều kiện mà intent đặt ra.
-        (success, result) = msg.sender.call(answer);
-        require(success, SolverFailed(result));
-        emit SolverResult(result);
-
-        // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
-        // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
-        // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
-
-        address executor = address(executorAndIntent[0 : 20]);
-        bytes calldata intent = executorAndIntent[20 : ];
-        (success, result) = executor.call(intent);
-        require(success, RequesterFailed(result));
-        emit RequesterResult(result);
-
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
-        intentHash = 0;
-        user = address(0);
-        resolver = address(0);
-        intentAccepted = false;
+        _clearContext();
     }
 
-    // Đây là hàm nhận callback từ user
-    function userCallback(bytes calldata executorAndIntent) external {
+    // Đây là hàm nhận callback từ sender
+    function senderCallback(bytes calldata executorAndIntent) external {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
         require(msg.sender == sender, InvalidUser(sender));
         // Kiểm tra trạng thái hàm resolve có đang chạy không.
         require(locked, InactiveSolver());
+        (address executor, bytes calldata intent) = _getExecutorAndIntent(executorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
-        if (intentAccepted) revert IntentAccepted(intent);
+        if (intentAccepted) revert IntentAccepted(executor, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
-        require(keccak256(executorAndIntent) == intentHash, InvalidIntent(executorAndIntent));
+        require(keccak256(executorAndIntent) == intentHash, InvalidIntent(executor, intent));
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         intentAccepted = true;
     }
@@ -159,7 +147,7 @@ contract UniversalSolver {
         bytes memory _requesterContext,
         bytes memory _resolverContext
     ) {
-        bytes32 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
+        uint256 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
         assembly ("memory-safe") {
             let length := tload(requesterContextNamespace)
             let round := shr(5, add(length, 31))
@@ -171,5 +159,74 @@ contract UniversalSolver {
             _requesterContext,
             _resolverContext
         );
+    }
+
+    function _getExecutorAndIntent(bytes calldata executorAndIntent) internal pure returns (
+        address executor,
+        bytes calldata intent
+    ) {
+        return (
+            address(bytes20(executorAndIntent[0 : 20])),
+            executorAndIntent[20 : ]
+        );
+    }
+
+    function _getFlagAndAnswer(bytes calldata flagAndAnswer) internal pure returns (
+        bool isSetContextForIntent,
+        bytes calldata answer
+    ) {
+        return (
+            flagAndAnswer[0] != 0,
+            flagAndAnswer[1 : ]
+        );
+    }
+
+    function _clearContext() internal {
+        intentHash = 0;
+        sender = address(0);
+        resolver = address(0);
+        intentAccepted = false;
+    }
+
+    function _setRequesterContext(address executor, bytes calldata intent) internal {
+        (bool success, bytes memory requesterContext) = executor.staticcall(intent);
+        require(success, CallRequesterContextFailed(sender, executor, intent));
+
+        uint256 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
+        uint256 length = requesterContext.length;
+        if (length > 0) {
+            assembly ("memory-safe") {
+                let round := shr(5, add(length, 31))
+                tstore(requesterContextNamespace, length)
+                let start_slot_ := add(requesterContextNamespace, 1)
+                let start_offset_ := add(requesterContext, 32)
+                for { let i := 0 } lt(i, round) { i := add(i, 1) } {
+                    tstore(add(start_slot_, i), mload(add(start_offset_, shl(5, i))))
+                }
+            }
+        }
+    }
+
+    function _setResolverContext(bytes calldata answer) internal view {
+        (bool success, bytes memory resolverContext) = msg.sender.staticcall(answer);
+
+        uint256 resolverContextNamespace = RESOLVER_CONTEXT_NAMESPACE;
+    }
+
+    function _resolveAnswer(bytes calldata answer) internal {
+        // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
+        // giải quyết theo các điều kiện mà intent đặt ra.
+        (bool success, bytes memory result) = msg.sender.call(answer);
+        require(success, SolverFailed(result));
+        emit SolverResult(result);
+    }
+
+    function _validateIntent(address executor, bytes calldata intent) internal {
+        // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
+        // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
+        // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
+        (bool success, bytes memory result) = executor.call(intent);
+        require(success, RequesterFailed(result));
+        emit RequesterResult(result);
     }
 }
