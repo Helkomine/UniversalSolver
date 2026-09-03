@@ -110,17 +110,11 @@ contract UniversalSolver {
         // Lưu user hợp lệ để xác minh trong callback.
         sender = userIntent.sender;
 
-        // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
-        // cần hoán đổi đến địa chỉ dễ tiếp cận để cho phép resolver giải quyết ở vào giai đoạn sau.
-        (success, result) = userIntent.sender.call(userIntent.senderData);
-        // Solver revert nếu user bị lỗi vì bất kỳ lý do gì.
-        require(success, ValidateIntentFailed(result));
-        // Solver revert nếu intent chưa được chấp thuận, đảm bảo an toàn ngay cả khi tài khoản user
-        // không thể từ chối intent không hợp lệ đúng cách, khi đó toàn bộ thao tác phụ như di chuyển
-        // số dư đều được khôi phục làm cho tài khoản user trở lại nguyên trạng.
-        require(intentAccepted, IntentNotAccepted());
-        // Phát log intent sau khi đã được xác thực hoàn tất.
-        emit ValidateIntentSuccess(intent);
+        _validateOnSender(userIntent.sender, userIntent.senderData);
+        _setRequesterContext(executor, intent);
+        _setResolverContext(answer);
+        _resolveAnswer(answer);
+        _validateIntent(executor, intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
         _clearContext();
@@ -186,6 +180,20 @@ contract UniversalSolver {
         sender = address(0);
         resolver = address(0);
         intentAccepted = false;
+    }
+
+    function _validateOnSender(address sender, bytes calldata senderData) internal {
+        // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
+        // cần hoán đổi đến địa chỉ dễ tiếp cận để cho phép resolver giải quyết ở vào giai đoạn sau.
+        (bool success, bytes memory result) = sender.call(senderData);
+        // Solver revert nếu user bị lỗi vì bất kỳ lý do gì.
+        require(success, ValidateIntentFailed(result));
+        // Solver revert nếu intent chưa được chấp thuận, đảm bảo an toàn ngay cả khi tài khoản user
+        // không thể từ chối intent không hợp lệ đúng cách, khi đó toàn bộ thao tác phụ như di chuyển
+        // số dư đều được khôi phục làm cho tài khoản user trở lại nguyên trạng.
+        require(intentAccepted, IntentNotAccepted());
+        // Phát log intent sau khi đã được xác thực hoàn tất.
+        emit ValidateIntentSuccess(intent);
     }
 
     function _setRequesterContext(address executor, bytes calldata intent) internal {
