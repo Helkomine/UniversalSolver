@@ -38,7 +38,7 @@ contract UniversalSolver {
     // Đối tượng chứa intent của user
     struct UserIntent {
         // Người nhận intentAndData, phải là tài khoản thông minh để xác thực dữ liệu này
-        address user;
+        address sender;
         // Dữ liệu intent được xác định bằng offset và length trong intentAndData, giá trị này có thể
         // được chọn tùy ý tuy nhiên Solver luôn xác thực tính hợp lệ của intent thực tế được requester
         // cung cấp.
@@ -48,16 +48,16 @@ contract UniversalSolver {
         // intent là khả thi vì thực tế tài khoản thông minh luôn chấp nhận các đoạn dữ liệu liên tục,
         // chẳng hạn execute(address target, uint256 value, bytes data) luôn có đoạn data liên tục và có
         // thể được tận dụng để chứa intent mà không cần yêu cầu bất kỳ sửa đổi nào trên tài khoản hiện có.
-        bytes intentAndData;
+        bytes senderData;
     }
 
-    // Địa chỉ interpreter được triển khai trên EVM-chain cho phép mô phỏng hành vi EVM gốc chỉ bằng calldata.
-    address public constant EVM_INTERPRETER = 0x0000000000001e3F4F615cd5e20c681Cf7d85e8D;
+    bytes32 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
+    bytes32 constant RESOLVER_CONTEXT_NAMESPACE = erc7201("resolver.context.namespace");
 
     // Lưu trữ intentHash dùng để xác thực intent.
     bytes32 transient intentHash;
     // Lưu trữ user để xác minh trong giai đoạn callback.
-    address transient user;
+    address transient sender;
     address transient resolver;
     // Biến nội bộ để xác minh intent đã được user chấp thuận trong giai đoạn callback hay không.
     bool transient intentAccepted;
@@ -65,7 +65,6 @@ contract UniversalSolver {
     bool transient locked;
 
     error Reentrancy();
-    error CodeNotExist();
     error IntentNotAccepted();
     error InactiveSolver();
     error InvalidUser(address user);
@@ -87,10 +86,6 @@ contract UniversalSolver {
 
         locked = false;
     }
-    
-    constructor() {
-        require(EVM_INTERPRETER.code.length > 0, CodeNotExist());
-    }
 
     // Đây là hàm giải quyết intent, bất kỳ ai cũng có thể gọi hàm này để cung cấp một answer hợp lệ
     // với mỗi intent tương ứng. Việc giải quyết cũng có thể được thực hiện theo lô bằng cách sử dụng
@@ -102,16 +97,16 @@ contract UniversalSolver {
         resolver = msg.sender;
 
         // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
-        bytes calldata intent = 
+        bytes calldata executorAndIntent = 
         userIntent.intentAndData[userIntent.offset : userIntent.offset + userIntent.length];
-        intentHash = keccak256(intent);
+        intentHash = keccak256(executorAndIntent);
 
         // Lưu user hợp lệ để xác minh trong callback.
-        user = userIntent.user;
+        sender = userIntent.sender;
 
         // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
         // cần hoán đổi đến địa chỉ dễ tiếp cận để cho phép resolver giải quyết ở vào giai đoạn sau.
-        (success, result) = userIntent.user.call(userIntent.intentAndData);
+        (success, result) = userIntent.sender.call(userIntent.senderData);
         // Solver revert nếu user bị lỗi vì bất kỳ lý do gì.
         require(success, ValidateIntentFailed(result));
         // Solver revert nếu intent chưa được chấp thuận, đảm bảo an toàn ngay cả khi tài khoản user
@@ -130,7 +125,10 @@ contract UniversalSolver {
         // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
         // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
         // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
-        (success, result) = EVM_INTERPRETER.call(intent);
+
+        address executor = address(executorAndIntent[0 : 20]);
+        bytes calldata intent = executorAndIntent[20 : ];
+        (success, result) = executor.call(intent);
         require(success, RequesterFailed(result));
         emit RequesterResult(result);
 
@@ -142,20 +140,36 @@ contract UniversalSolver {
     }
 
     // Đây là hàm nhận callback từ user
-    function userCallback(bytes calldata intent) external {
+    function userCallback(bytes calldata executorAndIntent) external {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
-        require(msg.sender == user, InvalidUser(user));
+        require(msg.sender == sender, InvalidUser(sender));
         // Kiểm tra trạng thái hàm resolve có đang chạy không.
         require(locked, InactiveSolver());
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
-        require(keccak256(intent) == intentHash, InvalidIntent(intent));
+        require(keccak256(executorAndIntent) == intentHash, InvalidIntent(executorAndIntent));
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         intentAccepted = true;
     }
 
-    function context() public view returns (address _resolver) {
-        return resolver;
+    function context() public view returns (
+        address _sender,
+        address _resolver,
+        bytes memory _requesterContext,
+        bytes memory _resolverContext
+    ) {
+        bytes32 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
+        assembly ("memory-safe") {
+            let length := tload(requesterContextNamespace)
+            let round := shr(5, add(length, 31))
+            mstore(_requesterContext, length)
+        }
+        return (
+            sender, 
+            resolver,
+            _requesterContext,
+            _resolverContext
+        );
     }
 }
