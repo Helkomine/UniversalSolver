@@ -57,10 +57,11 @@ contract UniversalSolver {
         bytes solution;
     }
 
-    uint256 constant REQUESTER_INTENT_NAMESPACE = erc7201("requester.intent.namespace");
-    uint256 constant RESOLVER_SOLUTION_NAMESPACE = erc7201("resolver.solution.namespace");
-    uint256 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
-    uint256 constant RESOLVER_CONTEXT_NAMESPACE = erc7201("resolver.context.namespace");
+    uint256 constant REQUESTER_INTENT_SLOT = erc7201("requester.intent.slot");
+    uint256 constant RESOLVER_SOLUTION_SLOT = erc7201("resolver.solution.slot");
+    uint256 constant REQUESTER_CONTEXT_SLOT = erc7201("requester.context.slot");
+    uint256 constant RESOLVER_CONTEXT_SLOT = erc7201("resolver.context.slot");
+    uint256 constant REQUESTER_FULL_INTENT_SLOT = erc7201("requester.full.intent.slot");
 
     // Lưu trữ intentHash dùng để xác thực intent.
     bytes32 transient intentHash;
@@ -164,7 +165,7 @@ contract UniversalSolver {
         bytes memory _requesterContext,
         bytes memory _resolverContext
     ) {
-        uint256 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
+        uint256 requesterContextNamespace = REQUESTER_CONTEXT_SLOT;
         assembly ("memory-safe") {
             let length := tload(requesterContextNamespace)
             let round := shr(5, add(length, 31))
@@ -182,12 +183,24 @@ contract UniversalSolver {
         );
     }
 
-    function requesterContextNamespace() public pure returns (bytes32) {
-        return bytes32(REQUESTER_CONTEXT_NAMESPACE);
+    function fullContext() public view returns (
+        address _resolver,
+        bool _locked,
+        bool _intentAccepted,
+        bytes memory packedUserIntent,
+        bytes memory packedResolverSolution,
+        bytes memory requesterContext,
+        bytes memory resolverContext
+    ) {
+        assembly ("memory-safe") {}
     }
 
-    function resolverContextNamespace() public pure returns (bytes32) {
-        return bytes32(RESOLVER_CONTEXT_NAMESPACE);
+    function requesterContextSlot() public pure returns (bytes32) {
+        return bytes32(REQUESTER_CONTEXT_SLOT);
+    }
+
+    function resolverContextSlot() public pure returns (bytes32) {
+        return bytes32(RESOLVER_CONTEXT_SLOT);
     }
 
     function getEnvelopeTx(
@@ -313,7 +326,7 @@ contract UniversalSolver {
         (bool success, bytes memory requesterContext) = executor.staticcall(intent);
         require(success, CallRequesterContextFailed(sender, executor, intent));
 
-        uint256 requesterContextNamespace = REQUESTER_CONTEXT_NAMESPACE;
+        uint256 requesterContextNamespace = REQUESTER_CONTEXT_SLOT;
         uint256 length = requesterContext.length;
         if (length > 0) {
             assembly ("memory-safe") {
@@ -331,7 +344,7 @@ contract UniversalSolver {
     function _setResolverContext(bytes memory answer) internal view {
         (bool success, bytes memory resolverContext) = msg.sender.staticcall(answer);
 
-        uint256 resolverContextNamespace = RESOLVER_CONTEXT_NAMESPACE;
+        uint256 resolverContextNamespace = RESOLVER_CONTEXT_SLOT;
     }
 
     function _resolveAnswer(bytes memory answer) internal {
@@ -351,4 +364,3 @@ contract UniversalSolver {
         emit RequesterResult(result);
     }
 }
-
