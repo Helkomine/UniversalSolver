@@ -42,13 +42,19 @@ contract UniversalSolver {
         // Dữ liệu intent được xác định bằng offset và length trong intentAndData, giá trị này có thể
         // được chọn tùy ý tuy nhiên Solver luôn xác thực tính hợp lệ của intent thực tế được requester
         // cung cấp.
+        address executor;
         uint256 offset;
         uint256 length;
         // Dữ liệu cần chuyển tiếp đến user, trong đó luôn mang theo intent. Việc slice calldata để lấy
         // intent là khả thi vì thực tế tài khoản thông minh luôn chấp nhận các đoạn dữ liệu liên tục,
         // chẳng hạn execute(address target, uint256 value, bytes data) luôn có đoạn data liên tục và có
         // thể được tận dụng để chứa intent mà không cần yêu cầu bất kỳ sửa đổi nào trên tài khoản hiện có.
-        bytes senderData;
+        bytes intent;
+    }
+
+    struct ResolverSolution {
+        uint8 policy;
+        bytes solution;
     }
 
     uint256 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
@@ -94,24 +100,30 @@ contract UniversalSolver {
     // với mỗi intent tương ứng. Việc giải quyết cũng có thể được thực hiện theo lô bằng cách sử dụng
     // các hợp đồng Multicall từ hợp đồng công khai hoặc từ tài khoản cá nhân.
     function resolve(
-        UserIntent calldata userIntent, 
-        bytes calldata policyAndAnswer
+        bytes calldata packedUserIntent, 
+        bytes calldata packedResolverSolution
     ) public nonReentrant {
         // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
-        bytes calldata executorAndIntent = 
-        userIntent.senderData[userIntent.offset : userIntent.offset + userIntent.length];
+        (
+            address _sender,
+            address executor,
+            uint256 offset,
+            uint256 length,
+            bytes calldata intent
+        ) = 
+        _decodeUserIntent(packedUserIntent);
 
-        (address executor, bytes calldata intent) = 
-        _getExecutorAndIntent(executorAndIntent);
+        (
+            uint8 policy, 
+            bytes calldata answer
+        ) = 
+        _decodeResolverSolution(packedResolverSolution);
 
-        (uint8 policy, bytes calldata answer) = 
-        _getFlagAndAnswer(policyAndAnswer);
-
-        _setContext(userIntent.sender, executorAndIntent, answer);
+        _setContext(_sender, executorAndIntent, answer);
 
         _setRequesterContext(executor, intent);
         _setResolverContext(answer);
-        _validateOnSender(userIntent.sender, userIntent.senderData);
+        _validateOnSender(_sender, intent);
         _resolveAnswer(answer);
         _validateIntent(executor, intent);
 
@@ -162,23 +174,40 @@ contract UniversalSolver {
         );
     }
 
-    function _getExecutorAndIntent(bytes calldata executorAndIntent) internal pure returns (
-        address executor,
-        bytes calldata intent
+    function _decodeUserIntent(
+        bytes calldata packedUserIntent
+    ) internal pure returns (
+        UserIntent calldata userIntent
     ) {
+        uint256 offset = uint32(bytes4(packedUserIntent[0 : 4]));
+        uint256 length = uint32(bytes4(packedUserIntent[4 : 8]));
+        bytes calldata txData = packedUserIntent[8 : ];
+        address sender = address(bytes20(txData[offset : offset + 20]));
+        address executor = address(bytes20(txData[offset + 20 : offset + 40]));
+        uint256 _offset = uint32(bytes4(txData[offset + 40 : offset + 44]));
+        require(_offset == offset);
+        uint256 _length = uint32(bytes4(txData[offset + 44 : offset + 48]));
+        require(_length == length);
+        bytes calldata intent = txData[offset + 48 : offset + length];
         return (
-            address(bytes20(executorAndIntent[0 : 20])),
-            executorAndIntent[20 : ]
+            UserIntent(
+                sender,
+                executor,
+                offset,
+                length,
+                intent
+            )
         );
     }
 
-    function _getFlagAndAnswer(bytes calldata flagAndAnswer) internal pure returns (
-        uint8 policy,
-        bytes calldata answer
+    function _decodeResolverSolution(
+        bytes calldata resolverSolutionPacked
+    ) internal pure returns (
+        ResolverSolution calldata resolverSolution
     ) {
         return (
-            uint8(flagAndAnswer[0]),
-            flagAndAnswer[1 : ]
+            uint8(resolverSolutionPacked[0]),
+            resolverSolutionPacked[1 : ]
         );
     }
 
@@ -258,3 +287,4 @@ contract UniversalSolver {
         emit RequesterResult(result);
     }
 }
+
