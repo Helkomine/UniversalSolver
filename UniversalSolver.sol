@@ -57,6 +57,8 @@ contract UniversalSolver {
         bytes solution;
     }
 
+    uint256 constant REQUESTER_INTENT_NAMESPACE = erc7201("requester.intent.namespace");
+    uint256 constant RESOLVER_SOLUTION_NAMESPACE = erc7201("resolver.solution.namespace");
     uint256 constant REQUESTER_CONTEXT_NAMESPACE = erc7201("requester.context.namespace");
     uint256 constant RESOLVER_CONTEXT_NAMESPACE = erc7201("resolver.context.namespace");
 
@@ -113,9 +115,19 @@ contract UniversalSolver {
 
         _setContext(
             userIntent.sender, 
-            getEnvelopeTx(packedUserIntent), 
+            sliceUserIntent(
+                userIntent.offset, 
+                userIntent.length, 
+                packedUserIntent
+            ), 
             packedResolverSolution
         );
+
+        (
+            bool isCacheRequesterIntent,
+            bool isCacheResolverSolution,
+            bool isCacheResolverContext
+        ) = decodePolicy(resolverSolution.policy);
 
         _setRequesterContext(userIntent.executor, userIntent.intent);
         _setResolverContext(resolverSolution.solution);
@@ -133,7 +145,7 @@ contract UniversalSolver {
         require(msg.sender == sender, InvalidUser(sender));
         // Kiểm tra trạng thái hàm resolve có đang chạy không.
         require(locked, InactiveSolver());
-        (address executor, bytes calldata intent) = decodeEnvelopeTx(executorAndIntent);
+        (address executor, bytes calldata intent) = decodeExecutorAndIntent(executorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(executor, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
@@ -186,16 +198,28 @@ contract UniversalSolver {
         return packedUserIntent[28 : ];
     }
 
-    function decodeEnvelopeTx(
-        bytes calldata envelopeTx
+    function decodeExecutorAndIntent(
+        bytes calldata executorAndIntent
     ) public pure returns (
-        address _sender,
+        address executor,
         bytes calldata intent
     ) {
         return (
-            envelopeTx[0 : 20],
-            envelopeTx[20 : ]
+            address(bytes20(executorAndIntent[0 : 20])),
+            executorAndIntent[20 : ]
         );
+    }
+
+    function sliceUserIntent(
+        uint256 offset,
+        uint256 length,
+        bytes calldata packedUserIntent
+    ) public pure returns (
+        bytes calldata executorAndIntent
+    ) {
+        require(length >= 20, LengthTooShort(length));
+        bytes calldata envelopeTx = getEnvelopeTx(packedUserIntent);
+        return packedUserIntent[offset : offset + length];
     }
 
     function decodeUserIntent(
@@ -206,10 +230,10 @@ contract UniversalSolver {
         address _sender = address(bytes20(packedUserIntent[0 : 20]));
         uint256 offset = uint32(bytes4(packedUserIntent[20 : 24]));
         uint256 length = uint32(bytes4(packedUserIntent[24 : 28]));
-        require(length >= 20, LengthTooShort(length));
-        bytes calldata envelopeTx = getEnvelopeTx(packedUserIntent);
-        address executor = address(bytes20(envelopeTx[offset : offset + 20]));
-        bytes calldata intent = envelopeTx[offset + 20 : offset + length];
+        bytes calldata executorAndIntent = 
+        sliceUserIntent(offset, length, packedUserIntent);
+        (address executor, bytes calldata intent) = 
+        decodeExecutorAndIntent(executorAndIntent);
         return UserIntent(
             _sender,
             offset,
@@ -231,9 +255,9 @@ contract UniversalSolver {
     }
 
     function decodePolicy(uint8 policy) public pure returns (
-        bool isSetRequesterIntent,
-        bool isSetResolverSolution,
-        bool isSetResolverContext
+        bool isCacheRequesterIntent,
+        bool isCacheResolverSolution,
+        bool isCacheResolverContext
     ) {
         return (
             (policy >> 7) == 1,
@@ -244,13 +268,13 @@ contract UniversalSolver {
 
     function _setContext(
         address _sender, 
-        bytes calldata envelopeTx, 
+        bytes calldata executorAndIntent, 
         bytes calldata packedResolverSolution
     ) internal {
         // Lưu user hợp lệ để xác minh trong callback.
         sender = _sender;
         resolver = msg.sender;
-        intentHash = keccak256(envelopeTx);
+        intentHash = keccak256(executorAndIntent);
         solutionHash = keccak256(packedResolverSolution);
     }
 
@@ -261,6 +285,15 @@ contract UniversalSolver {
         solutionHash = 0;
         intentAccepted = false;
     }
+
+    function _cacheIntent(
+        bool isCacheRequesterIntent, 
+        bytes calldata intent
+    ) internal {
+        if (isCacheRequesterIntent) {}
+    }
+
+    function _cacheSolution() internal {}
 
     function _validateOnSender(address sender, bytes memory senderData) internal {
         // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
@@ -318,5 +351,4 @@ contract UniversalSolver {
         emit RequesterResult(result);
     }
 }
-
 
