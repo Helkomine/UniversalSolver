@@ -126,14 +126,14 @@ contract UniversalSolver {
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
         _clearContext();
     }
-/*
+
     // Đây là hàm nhận callback từ sender
     function senderCallback(bytes calldata executorAndIntent) external {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
         require(msg.sender == sender, InvalidUser(sender));
         // Kiểm tra trạng thái hàm resolve có đang chạy không.
         require(locked, InactiveSolver());
-        (address executor, bytes calldata intent) = _getExecutorAndIntent(executorAndIntent);
+        (address executor, bytes calldata intent) = decodeEnvelopeTx(executorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(executor, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
@@ -141,7 +141,7 @@ contract UniversalSolver {
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         intentAccepted = true;
     }
-*/
+
     function context() public view returns (
         address _sender,
         address _resolver,
@@ -184,6 +184,18 @@ contract UniversalSolver {
         bytes calldata envelopeTx
     ) {
         return packedUserIntent[28 : ];
+    }
+
+    function decodeEnvelopeTx(
+        bytes calldata envelopeTx
+    ) public pure returns (
+        address _sender,
+        bytes calldata intent
+    ) {
+        return (
+            envelopeTx[0 : 20],
+            envelopeTx[20 : ]
+        );
     }
 
     function decodeUserIntent(
