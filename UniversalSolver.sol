@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: CC0-1.0
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
 // Đây là hợp đồng bộ giải intent, trong đó requester cung cấp một intent cần được giải quyết bên trong
@@ -39,16 +39,16 @@ contract UniversalSolver {
     struct UserIntent {
         // Người nhận intentAndData, phải là tài khoản thông minh để xác thực dữ liệu này
         address sender;
-        // Dữ liệu intent được xác định bằng offset và length trong intentAndData, giá trị này có thể
-        // được chọn tùy ý tuy nhiên Solver luôn xác thực tính hợp lệ của intent thực tế được requester
-        // cung cấp.
-        address executor;
         uint256 offset;
         uint256 length;
         // Dữ liệu cần chuyển tiếp đến user, trong đó luôn mang theo intent. Việc slice calldata để lấy
         // intent là khả thi vì thực tế tài khoản thông minh luôn chấp nhận các đoạn dữ liệu liên tục,
         // chẳng hạn execute(address target, uint256 value, bytes data) luôn có đoạn data liên tục và có
         // thể được tận dụng để chứa intent mà không cần yêu cầu bất kỳ sửa đổi nào trên tài khoản hiện có.
+        // Dữ liệu intent được xác định bằng offset và length trong intentAndData, giá trị này có thể
+        // được chọn tùy ý tuy nhiên Solver luôn xác thực tính hợp lệ của intent thực tế được requester
+        // cung cấp.
+        address executor;
         bytes intent;
     }
 
@@ -62,7 +62,7 @@ contract UniversalSolver {
 
     // Lưu trữ intentHash dùng để xác thực intent.
     bytes32 transient intentHash;
-    bytes32 transient answerHash;
+    bytes32 transient solutionHash;
     // Lưu trữ user để xác minh trong giai đoạn callback.
     address transient sender;
     address transient resolver;
@@ -74,6 +74,7 @@ contract UniversalSolver {
     error Reentrancy();
     error IntentNotAccepted();
     error InactiveSolver();
+    error LengthTooShort(uint256 length);
     error CallRequesterContextFailed(address requester, address executor, bytes reason);
     error CallResolverContextFailed(address resolver, bytes reason);
     error InvalidUser(address user);
@@ -104,33 +105,28 @@ contract UniversalSolver {
         bytes calldata packedResolverSolution
     ) public nonReentrant {
         // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
-        (
-            address _sender,
-            address executor,
-            uint256 offset,
-            uint256 length,
-            bytes calldata intent
-        ) = 
-        _decodeUserIntent(packedUserIntent);
+        UserIntent memory userIntent = 
+        decodeUserIntent(packedUserIntent);
 
-        (
-            uint8 policy, 
-            bytes calldata answer
-        ) = 
-        _decodeResolverSolution(packedResolverSolution);
+        ResolverSolution memory resolverSolution = 
+        decodeResolverSolution(packedResolverSolution);
 
-        _setContext(_sender, executorAndIntent, answer);
+        _setContext(
+            userIntent.sender, 
+            getEnvelopeTx(packedUserIntent), 
+            packedResolverSolution
+        );
 
-        _setRequesterContext(executor, intent);
-        _setResolverContext(answer);
-        _validateOnSender(_sender, intent);
-        _resolveAnswer(answer);
-        _validateIntent(executor, intent);
+        _setRequesterContext(userIntent.executor, userIntent.intent);
+        _setResolverContext(resolverSolution.solution);
+        _validateOnSender(userIntent.sender, userIntent.intent);
+        _resolveAnswer(resolverSolution.solution);
+        _validateIntent(userIntent.executor, userIntent.intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
         _clearContext();
     }
-
+/*
     // Đây là hàm nhận callback từ sender
     function senderCallback(bytes calldata executorAndIntent) external {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
@@ -145,7 +141,7 @@ contract UniversalSolver {
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         intentAccepted = true;
     }
-
+*/
     function context() public view returns (
         address _sender,
         address _resolver,
@@ -166,7 +162,7 @@ contract UniversalSolver {
             sender, 
             resolver,
             intentHash,
-            answerHash,
+            solutionHash,
             userIntent,
             answer,
             _requesterContext,
@@ -174,64 +170,87 @@ contract UniversalSolver {
         );
     }
 
-    function _decodeUserIntent(
+    function requesterContextNamespace() public pure returns (bytes32) {
+        return bytes32(REQUESTER_CONTEXT_NAMESPACE);
+    }
+
+    function resolverContextNamespace() public pure returns (bytes32) {
+        return bytes32(RESOLVER_CONTEXT_NAMESPACE);
+    }
+
+    function getEnvelopeTx(
         bytes calldata packedUserIntent
-    ) internal pure returns (
-        UserIntent calldata userIntent
+    ) public pure returns (
+        bytes calldata envelopeTx
     ) {
-        uint256 offset = uint32(bytes4(packedUserIntent[0 : 4]));
-        uint256 length = uint32(bytes4(packedUserIntent[4 : 8]));
-        bytes calldata txData = packedUserIntent[8 : ];
-        address sender = address(bytes20(txData[offset : offset + 20]));
-        address executor = address(bytes20(txData[offset + 20 : offset + 40]));
-        uint256 _offset = uint32(bytes4(txData[offset + 40 : offset + 44]));
-        require(_offset == offset);
-        uint256 _length = uint32(bytes4(txData[offset + 44 : offset + 48]));
-        require(_length == length);
-        bytes calldata intent = txData[offset + 48 : offset + length];
-        return (
-            UserIntent(
-                sender,
-                executor,
-                offset,
-                length,
-                intent
-            )
+        return packedUserIntent[28 : ];
+    }
+
+    function decodeUserIntent(
+        bytes calldata packedUserIntent
+    ) public pure returns (
+        UserIntent memory userIntent
+    ) {
+        address _sender = address(bytes20(packedUserIntent[0 : 20]));
+        uint256 offset = uint32(bytes4(packedUserIntent[20 : 24]));
+        uint256 length = uint32(bytes4(packedUserIntent[24 : 28]));
+        require(length >= 20, LengthTooShort(length));
+        bytes calldata envelopeTx = getEnvelopeTx(packedUserIntent);
+        address executor = address(bytes20(envelopeTx[offset : offset + 20]));
+        bytes calldata intent = envelopeTx[offset + 20 : offset + length];
+        return UserIntent(
+            _sender,
+            offset,
+            length,
+            executor,
+            intent
         );
     }
 
-    function _decodeResolverSolution(
+    function decodeResolverSolution(
         bytes calldata resolverSolutionPacked
-    ) internal pure returns (
-        ResolverSolution calldata resolverSolution
+    ) public pure returns (
+        ResolverSolution memory resolverSolution
     ) {
-        return (
+        return ResolverSolution(
             uint8(resolverSolutionPacked[0]),
             resolverSolutionPacked[1 : ]
         );
     }
 
+    function decodePolicy(uint8 policy) public pure returns (
+        bool isSetRequesterIntent,
+        bool isSetResolverSolution,
+        bool isSetResolverContext
+    ) {
+        return (
+            (policy >> 7) == 1,
+            ((policy >> 6) & 1) == 1,
+            ((policy >> 5) & 1) == 1
+        );
+    }
+
     function _setContext(
         address _sender, 
-        bytes calldata executorAndIntent, 
-        bytes calldata answer
+        bytes calldata envelopeTx, 
+        bytes calldata packedResolverSolution
     ) internal {
         // Lưu user hợp lệ để xác minh trong callback.
         sender = _sender;
         resolver = msg.sender;
-        
-        intentHash = keccak256(executorAndIntent);
-        answerHash = keccak256(answer);
+        intentHash = keccak256(envelopeTx);
+        solutionHash = keccak256(packedResolverSolution);
     }
 
     function _clearContext() internal {
-        intentHash = 0;
         sender = address(0);
         resolver = address(0);
+        intentHash = 0;
+        solutionHash = 0;
         intentAccepted = false;
     }
 
-    function _validateOnSender(address sender, bytes calldata senderData) internal {
+    function _validateOnSender(address sender, bytes memory senderData) internal {
         // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
         // cần hoán đổi đến địa chỉ dễ tiếp cận để cho phép resolver giải quyết ở vào giai đoạn sau.
         (bool success, bytes memory result) = sender.call(senderData);
@@ -245,7 +264,7 @@ contract UniversalSolver {
         emit ValidateIntentSuccess(senderData);
     }
 
-    function _setRequesterContext(address executor, bytes calldata intent) internal {
+    function _setRequesterContext(address executor, bytes memory intent) internal {
         (bool success, bytes memory requesterContext) = executor.staticcall(intent);
         require(success, CallRequesterContextFailed(sender, executor, intent));
 
@@ -264,13 +283,13 @@ contract UniversalSolver {
         }
     }
 
-    function _setResolverContext(bytes calldata answer) internal view {
+    function _setResolverContext(bytes memory answer) internal view {
         (bool success, bytes memory resolverContext) = msg.sender.staticcall(answer);
 
         uint256 resolverContextNamespace = RESOLVER_CONTEXT_NAMESPACE;
     }
 
-    function _resolveAnswer(bytes calldata answer) internal {
+    function _resolveAnswer(bytes memory answer) internal {
         // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
         // giải quyết theo các điều kiện mà intent đặt ra.
         (bool success, bytes memory result) = msg.sender.call(answer);
@@ -278,7 +297,7 @@ contract UniversalSolver {
         emit SolverResult(result);
     }
 
-    function _validateIntent(address executor, bytes calldata intent) internal {
+    function _validateIntent(address executor, bytes memory intent) internal {
         // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
         // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
         // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
@@ -287,4 +306,5 @@ contract UniversalSolver {
         emit RequesterResult(result);
     }
 }
+
 
