@@ -64,15 +64,15 @@ contract UniversalSolver {
     uint256 constant REQUESTER_FULL_INTENT_SLOT = erc7201("requester.full.intent.slot");
 
     // Lưu trữ intentHash dùng để xác thực intent.
-    bytes32 transient intentHash;
-    bytes32 transient solutionHash;
+    bytes32 public transient intentHash;
+    bytes32 public transient solutionHash;
     // Lưu trữ user để xác minh trong giai đoạn callback.
-    address transient sender;
-    address transient resolver;
+    address public transient sender;
+    address public transient resolver;
     // Biến nội bộ để xác minh intent đã được user chấp thuận trong giai đoạn callback hay không.
-    bool transient intentAccepted;
+    bool public transient intentAccepted;
     // Biến nội bộ dùng để chống reentrancy và mở khóa thực thi cho hàm callback.
-    bool transient locked;
+    bool public transient locked;
 
     error Reentrancy();
     error IntentNotAccepted();
