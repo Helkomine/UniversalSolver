@@ -33,8 +33,11 @@ pragma solidity ^0.8.35;
 // Note: Thiết kế chưa bao gồm cơ chế chống reentrancy, tuy nhiên hàm giải quyết chỉ nên chấp nhận một 
 // lần gọi trên mỗi lượt, hàm callback chỉ nên chấp nhận lời gọi một khi hàm giải quyết được kích hoạt
 // trước đó, hàm này nên từ chối sau khi đã xác thực intent thành công.
+interface IUniversalSolver {
+    event ValidateIntentSuccess(bytes intent);
+    event RequesterResult(bytes result);
+    event SolverResult(bytes result);
 
-contract UniversalSolver {
     // Đối tượng chứa intent của user
     struct UserIntent {
         // Người nhận intentAndData, phải là tài khoản thông minh để xác thực dữ liệu này
@@ -58,6 +61,15 @@ contract UniversalSolver {
         bytes solution;
     }
 
+    function resolve(
+        bytes calldata packedUserIntent, 
+        bytes calldata packedResolverSolution
+    ) external;
+
+    function senderCallback(bytes calldata validatorAndIntent) external;
+}
+
+contract UniversalSolver is IUniversalSolver {
     struct Flags {
         bool isUsingResolver;
         bool isCacheRequesterIntent;
@@ -72,6 +84,7 @@ contract UniversalSolver {
     bytes32 public constant RESOLVER_CONTEXT_SLOT = bytes32(erc7201("resolver.context.slot"));
     bytes32 public constant REQUESTER_FULL_DATA_SLOT = bytes32(erc7201("requester.full.data.slot"));
     uint32 public constant MAX_TOTAL_SLOT = type(uint32).max;
+    uint32 public constant MASKING = type(uint32).max;
 
     // Lưu trữ user để xác minh trong giai đoạn callback.
     address public transient sender;
@@ -100,10 +113,6 @@ contract UniversalSolver {
     error ValidateIntentFailed(bytes result);
     error RequesterFailed(bytes result);
     error SolverFailed(bytes result);
-
-    event ValidateIntentSuccess(bytes intent);
-    event RequesterResult(bytes result);
-    event SolverResult(bytes result);
 
     modifier nonReentrant {
         if (locked) revert Reentrancy();
@@ -186,38 +195,42 @@ contract UniversalSolver {
     }
 
     function context() public view returns (
-        address _sender,
-        address _resolver,
+        address _initator,
         bytes32 _intentHash,
-        bytes32 _answerHash,
+        bytes32 _solutionHash,
+        bool _intentAccepted,
         UserIntent memory userIntent,
-        bytes memory answer,
-        bytes memory _requesterContext,
-        bytes memory _resolverContext
+        ResolverSolution memory resolverSolution,
+        bytes memory requesterContext,
+        bytes memory resolverContext
     ) {
-        bytes32 requesterContextNamespace = REQUESTER_CONTEXT_SLOT;
-        assembly ("memory-safe") {
-            let length := tload(requesterContextNamespace)
-            let round := shr(5, add(length, 31))
-            mstore(_requesterContext, length)
-        }
+        (uint256 offset, uint256 length) = _getOffsetAndLength();
         return (
-            sender, 
-            resolver,
+            initator,
             intentHash,
             solutionHash,
-            userIntent,
-            answer,
-            _requesterContext,
-            _resolverContext
+            intentAccepted,
+            UserIntent(
+                sender,
+                offset,
+                length,
+                validator,
+                getCacheData(REQUESTER_INTENT_SLOT)
+            ),
+            ResolverSolution(
+                policy,
+                resolver,
+                getCacheData(RESOLVER_SOLUTION_SLOT)
+            ),
+            getCacheData(REQUESTER_CONTEXT_SLOT),
+            getCacheData(RESOLVER_CONTEXT_SLOT)
         );
     }
 
     function fullContext() public view returns (
+        address _initator,
         bytes32 _intentHash,
         bytes32 _solutionHash,
-        address _resolver,
-        address _initator,
         bool _intentAccepted,
         bool _locked,
         bytes memory packedUserIntent,
@@ -225,7 +238,22 @@ contract UniversalSolver {
         bytes memory requesterContext,
         bytes memory resolverContext
     ) {
-        assembly ("memory-safe") {}
+        (bool isUsingResolver,,,,) = decodePolicy(policy);
+        return (
+            initator,
+            intentHash,
+            solutionHash,
+            intentAccepted,
+            locked,
+            getCacheData(REQUESTER_FULL_DATA_SLOT),
+            abi.encodePacked(
+                bytes1(policy), 
+                isUsingResolver ? abi.encodePacked(resolver) : new bytes(0), 
+                getCacheData(RESOLVER_SOLUTION_SLOT)
+            ),
+            getCacheData(REQUESTER_CONTEXT_SLOT),
+            getCacheData(RESOLVER_CONTEXT_SLOT)
+        );
     }
 
     function getEnvelopeTx(
@@ -257,7 +285,7 @@ contract UniversalSolver {
     ) {
         require(length >= 20, LengthTooShort(length));
         bytes calldata envelopeTx = getEnvelopeTx(packedUserIntent);
-        return packedUserIntent[offset : offset + length];
+        return envelopeTx[offset : offset + length];
     }
 
     function decodeUserIntent(
@@ -287,9 +315,9 @@ contract UniversalSolver {
         ResolverSolution memory resolverSolution
     ) {
         bytes32 _policy = bytes32(packedResolverSolution[0]);
-        (bool isUsingExecutor,,,,) = decodePolicy(_policy);
+        (bool isUsingResolver,,,,) = decodePolicy(_policy);
         (address executor, bytes calldata solution) = 
-            isUsingExecutor 
+            isUsingResolver 
             ? (
                 address(bytes20(packedResolverSolution[1 : 21])), 
                 packedResolverSolution[21 : ]
@@ -349,9 +377,12 @@ contract UniversalSolver {
         intentHash = 0;
         solutionHash = 0;
         intentAccepted = false;
-        _clearCacheData(REQUESTER_INTENT_SLOT);
+        _clearOffsetAndLength();
+        _clearCacheData(bytes32(uint256(REQUESTER_INTENT_SLOT) + 1));
         _clearCacheData(RESOLVER_SOLUTION_SLOT);
-        _clearCacheData(namespace);
+        _clearCacheData(REQUESTER_CONTEXT_SLOT);
+        _clearCacheData(RESOLVER_CONTEXT_SLOT);
+        _clearCacheData(REQUESTER_FULL_DATA_SLOT);
     }
 
     function _validateOnSender(address _sender, bytes calldata envelopeTx) internal {
@@ -375,11 +406,7 @@ contract UniversalSolver {
         bytes memory intent
     ) internal {
         if (isCacheRequesterIntent) {
-            bytes32 slot = REQUESTER_INTENT_SLOT;
-            assembly ("memory-safe") {
-                let packed := or(shl(32, offset), length)
-                tstore(slot, packed)
-            }
+            _setOffsetAndLength(offset, length);
             _setCacheData(bytes32(uint256(REQUESTER_INTENT_SLOT) + 1), intent);
         }
     }
@@ -393,10 +420,9 @@ contract UniversalSolver {
         }
     }
 
-    function _cacheRequesterContext(address validator, bytes memory intent) internal {
-        (bool success, bytes memory requesterContext) = validator.staticcall(intent);
-        require(success, CallRequesterContextFailed(validator, intent));
-        uint256 length = requesterContext.length;
+    function _cacheRequesterContext(address _validator, bytes memory intent) internal {
+        (bool success, bytes memory requesterContext) = _validator.staticcall(intent);
+        require(success, CallRequesterContextFailed(_validator, intent));
         _setCacheData(REQUESTER_CONTEXT_SLOT, requesterContext);
     }
 
@@ -407,6 +433,7 @@ contract UniversalSolver {
     ) internal {
         if (isCacheResolverContext) {
             (bool success, bytes memory resolverContext) = _resolver.staticcall(solution);
+            require(success, CallResolverContextFailed(_resolver, resolverContext));
             _setCacheData(RESOLVER_CONTEXT_SLOT, resolverContext);
         }
     }
@@ -431,11 +458,11 @@ contract UniversalSolver {
         emit SolverResult(result);
     }
 
-    function _validateIntent(address validator, bytes memory intent) internal {
+    function _validateIntent(address _validator, bytes memory intent) internal {
         // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
         // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
         // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
-        (bool success, bytes memory result) = validator.call(intent);
+        (bool success, bytes memory result) = _validator.call(intent);
         require(success, RequesterFailed(result));
         emit RequesterResult(result);
     }
@@ -517,4 +544,29 @@ contract UniversalSolver {
     ) internal view returns (address _resolver_) {
         return isUsingResolver ? _resolver : msg.sender;
     }
+
+    function _getOffsetAndLength() internal view returns (uint256 offset, uint256 length) {
+        bytes32 slot = REQUESTER_INTENT_SLOT;
+        uint32 masking = MASKING;
+        assembly ("memory-safe") {
+            let packed := tload(slot)
+            offset := shr(32, packed)
+            length := and(packed, masking)
+        }
+    }
+
+    function _setOffsetAndLength(uint256 offset, uint256 length) internal {
+        bytes32 slot = REQUESTER_INTENT_SLOT;
+        assembly ("memory-safe") {
+            let packed := or(shl(32, offset), length)
+            tstore(slot, packed)
+        }
+    }
+
+    function _clearOffsetAndLength() internal {
+        bytes32 slot = REQUESTER_INTENT_SLOT;
+        assembly ("memory-safe") {
+            tstore(slot, 0)
+        }
+    } 
 }
