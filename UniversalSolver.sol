@@ -2,89 +2,46 @@
 pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
-// Đây là hợp đồng bộ giải intent, trong đó requester cung cấp một intent cần được giải quyết bên trong
-// đối tượng UserIntent và resolver cung cấp phương án giải quyết thông qua dữ liệu bytes answer.
-// Solver thu thập các thông tin này để thực thi thông qua answer và xác nhận hợp lệ thông qua intent.
-// Hệ thống offchain nhận UserIntent từ người dùng và phát tán nó qua một mempool công khai, nếu ai đó
-// có thể cung cấp được lời giải tương ứng thì sẽ thu gom UserIntent và answer tương ứng gửi vào hợp
-// đồng này. Trong đó luồng hoạt động on-chain của UniversalSolver như sau:
-// 1. Solver trích xuất intent thông qua slice calldata bằng hai tham số offset và length, intent này
-// được hash và lưu vào bộ đệm để xác minh sau này.
-// 2. Solver lấy bytes intentAndData để gọi đến tài khoản thông minh của user và chờ đợi phản hồi. Luồng
-// thực thi trên tài khoản thông minh không thay đổi, tuy nhiên dữ liệu cho nó phải bao gồm lời gọi đến
-// chính solver này để xác minh và có thể thêm các thao tác bổ sung như chuyển token ERC20 nhằm cung cấp
-// môi trường cho việc giải quyết, lưu ý rằng thao tác phụ phải diễn ra trước khi callback solver và các
-// tài sản phải được gửi đến hợp đồng interpreter vì đó là nơi diễn giải calldata thành chương trình thực thi.
-// 3. Tài khoản user callback Solver với chữ ký hàm userCallback(bytes), tại đây Solver xác minh intent
-// được gửi đến có trùng khớp với intentHash đã được lưu trước đó hay không, nếu đúng thì chứng tỏ user
-// đã chấp thuận intent này trên on-chain tức là Solver được phép chuyển giao công việc cho resolver,
-// ngược lại intent này là không hợp lệ và bị revert. Mặc định Solver revert intent không hợp lệ ngay
-// cả khi user không thực hiện revert call không hợp lệ để đảm bảo an toàn. Solver cũng phải xác minh
-// người gọi có đến từ chính user đó hay không.
-// 4. Khi user trả lại quyền kiểm soát cho Solver, hàm giải quyết kiểm tra intent đó đã được user chấp
-// nhận hay chưa, nếu không thì revert, ngược lại nó bắt đầu quy trình giải quyết bằng cách chuyển giao
-// answer cho resolver, để đơn giản và vì lý do an toàn, Solver luôn chuyển giao answer cho msg.sender,
-// điều này yêu cầu resolver phải là một tài khoản có mã để thực thi callback từ phía Solver, trong thời
-// gian này resolver có toàn quyền quyết định lộ trình thực thi mà họ mong muốn.
-// 5. Sau khi thời gian chạy của resolver kết thúc, Solver chuyển tiếp toàn bộ intent của requester đến
-// hợp đồng interpreter, đây là một hợp đồng tiện ích để cho phép thực thi calldata động theo ngữ cảnh
-// tương tự một bytecode EVM hoàn chỉnh, calldata bytecode này tiến hành các kiểm tra về số dư và có thể
-// thực hiện di chuyển số dư cuối cùng về tài khoản đã được chỉ định. Giao dịch hoàn tất!
-// Note: Thiết kế chưa bao gồm cơ chế chống reentrancy, tuy nhiên hàm giải quyết chỉ nên chấp nhận một 
-// lần gọi trên mỗi lượt, hàm callback chỉ nên chấp nhận lời gọi một khi hàm giải quyết được kích hoạt
-// trước đó, hàm này nên từ chối sau khi đã xác thực intent thành công.
 interface IUniversalSolver {
     event ValidateIntentSuccess(bytes intent);
     event RequesterResult(bytes result);
     event SolverResult(bytes result);
 
-    // Đối tượng chứa intent của user
     struct UserIntent {
-        // Người nhận intentAndData, phải là tài khoản thông minh để xác thực dữ liệu này
         address sender;
-        uint256 offset;
-        uint256 length;
-        // Dữ liệu cần chuyển tiếp đến user, trong đó luôn mang theo intent. Việc slice calldata để lấy
-        // intent là khả thi vì thực tế tài khoản thông minh luôn chấp nhận các đoạn dữ liệu liên tục,
-        // chẳng hạn execute(address target, uint256 value, bytes data) luôn có đoạn data liên tục và có
-        // thể được tận dụng để chứa intent mà không cần yêu cầu bất kỳ sửa đổi nào trên tài khoản hiện có.
-        // Dữ liệu intent được xác định bằng offset và length trong intentAndData, giá trị này có thể
-        // được chọn tùy ý tuy nhiên Solver luôn xác thực tính hợp lệ của intent thực tế được requester
-        // cung cấp.
         address validator;
         bytes intent;
     }
 
+    struct UserEnvelopeTx {
+        address sender;
+        uint256 sliceInfo;
+        bytes envelopeTx;
+    }
+
     struct ResolverSolution {
-        bytes32 policy;
         address resolver;
+        bytes32 policy;
         bytes solution;
     }
 
     function resolve(
-        bytes calldata packedUserIntent, 
-        bytes calldata packedResolverSolution
+        UserEnvelopeTx calldata userEnvelopeTx, 
+        ResolverSolution calldata resolverSolution
     ) external;
 
     function senderCallback(bytes calldata validatorAndIntent) external;
 }
 
 contract UniversalSolver is IUniversalSolver {
-    struct Flags {
-        bool isUsingResolver;
-        bool isCacheRequesterIntent;
-        bool isCacheResolverSolution;
-        bool isCacheResolverContext;
-        bool isCacheRequesterFullData;
-    }
-
-    bytes32 public constant REQUESTER_INTENT_SLOT = bytes32(erc7201("requester.intent.slot"));
+    bytes32 public constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
+    bytes32 public constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
     bytes32 public constant RESOLVER_SOLUTION_SLOT = bytes32(erc7201("resolver.solution.slot"));
-    bytes32 public constant REQUESTER_CONTEXT_SLOT = bytes32(erc7201("requester.context.slot"));
+    bytes32 public constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
     bytes32 public constant RESOLVER_CONTEXT_SLOT = bytes32(erc7201("resolver.context.slot"));
-    bytes32 public constant REQUESTER_FULL_DATA_SLOT = bytes32(erc7201("requester.full.data.slot"));
     uint32 public constant MAX_TOTAL_SLOT = type(uint32).max;
     uint32 public constant MASKING = type(uint32).max;
+    uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
 
     // Lưu trữ user để xác minh trong giai đoạn callback.
     address public transient sender;
@@ -95,8 +52,7 @@ contract UniversalSolver is IUniversalSolver {
     // Lưu trữ intentHash dùng để xác thực intent.
     bytes32 public transient intentHash;
     bytes32 public transient solutionHash;
-    uint256 public transient offset;
-    uint256 public transient length;
+    uint256 public transient sliceInfo;
     // Biến nội bộ để xác minh intent đã được user chấp thuận trong giai đoạn callback hay không.
     bool public transient intentAccepted;
     // Biến nội bộ dùng để chống reentrancy và mở khóa thực thi cho hàm callback.
@@ -125,57 +81,54 @@ contract UniversalSolver is IUniversalSolver {
         locked = false;
     }
 
-    // Đây là hàm giải quyết intent, bất kỳ ai cũng có thể gọi hàm này để cung cấp một answer hợp lệ
-    // với mỗi intent tương ứng. Việc giải quyết cũng có thể được thực hiện theo lô bằng cách sử dụng
-    // các hợp đồng Multicall từ hợp đồng công khai hoặc từ tài khoản cá nhân.
     function resolve(
-        bytes calldata packedUserIntent, 
-        bytes calldata packedResolverSolution
+        UserEnvelopeTx calldata userEnvelopeTx, 
+        ResolverSolution calldata resolverSolution
     ) public nonReentrant {
-        // Lấy intent từ intentAndData và sau đó lưu lại ở dạng hash để tiết kiệm chi phí.
-        UserIntent memory userIntent = 
-        decodeUserIntent(packedUserIntent);
-
-        ResolverSolution memory resolverSolution = 
-        decodeResolverSolution(packedResolverSolution);
-
-        Flags memory flags;
         (
-            flags.isUsingResolver,
-            flags.isCacheRequesterIntent,
-            flags.isCacheResolverSolution,
-            flags.isCacheResolverContext,
-            flags.isCacheRequesterFullData
+            bool isCacheUserEnvelopeTx,
+            bool isCacheUserIntent,
+            bool isCacheResolverSolution,
+            bool isCacheResolverContext
         ) = decodePolicy(resolverSolution.policy);
 
-        address _resolver = _getResolver(flags.isUsingResolver, resolverSolution.resolver);
+        (uint256 offset, uint256 length) = getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
+        bytes calldata intent 
+        = getValidatorAndIntent(
+            offset,
+            length,
+            userEnvelopeTx.envelopeTx
+        );
+
+        _cacheUserEnvelopeTx(isCacheUserEnvelopeTx, userEnvelopeTx.envelopeTx);
+        _cacheUserIntent(isCacheUserIntent, intent);
+        _cacheResolverSolution(isCacheResolverSolution, resolverSolution.solution);
+        _cacheUserContext(userEnvelopeTx.validator, intent);
+        _cacheResolverContext(
+            isCacheResolverContext,
+            resolverSolution.resolver,
+            resolverSolution.solution
+        );
         _setContext(
-            userIntent.sender,
-            userIntent.validator,
-            _resolver,
+            userEnvelopeTx.sender,
+            userEnvelopeTx.validator,
+            getResolver(resolverSolution),
+            msg.sender,
             resolverSolution.policy,
-            sliceUserIntent(
-                userIntent.offset, 
-                userIntent.length, 
-                packedUserIntent
+            keccak256(
+                sliceUserEnvelopeTx(
+                    offset,
+                    length,
+                    userEnvelopeTx.envelopeTx
+                )
             ), 
-            packedResolverSolution
+            keccak256(resolverSolution.solution),
+            userEnvelopeTx.sliceInfo
         );
-
-        _cacheRequesterIntent(
-            flags.isCacheRequesterIntent,
-            userIntent.offset,
-            userIntent.length,
-            userIntent.intent
-        );
-        _cacheRequesterFullData(flags.isCacheRequesterFullData, packedUserIntent);
-        _cacheResolverSolution(flags.isCacheResolverSolution, resolverSolution.solution);
-        _cacheRequesterContext(userIntent.validator, userIntent.intent);
-        _cacheResolverContext(flags.isCacheResolverContext, _resolver, resolverSolution.solution);
-        _validateOnSender(userIntent.sender, getEnvelopeTx(packedUserIntent));
-        _resolveSolution(_resolver, resolverSolution.solution);
-        _validateIntent(userIntent.validator, userIntent.intent);
+        _validateOnSender(userEnvelopeTx.sender, userEnvelopeTx.envelopeTx);
+        _resolveSolution(resolverSolution.resolver, resolverSolution.solution);
+        _validateIntent(userEnvelopeTx.validator, intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
         _clearContext();
@@ -200,6 +153,7 @@ contract UniversalSolver is IUniversalSolver {
         address _initator,
         bytes32 _intentHash,
         bytes32 _solutionHash,
+        uint256 _sliceInfo,
         bool _intentAccepted,
         UserIntent memory userIntent,
         ResolverSolution memory resolverSolution,
@@ -210,20 +164,19 @@ contract UniversalSolver is IUniversalSolver {
             initator,
             intentHash,
             solutionHash,
+            sliceInfo,
             intentAccepted,
             UserIntent(
                 sender,
-                offset,
-                length,
                 validator,
-                getCacheData(REQUESTER_INTENT_SLOT)
+                getCacheData(USER_INTENT_SLOT)
             ),
             ResolverSolution(
                 policy,
                 resolver,
                 getCacheData(RESOLVER_SOLUTION_SLOT)
             ),
-            getCacheData(REQUESTER_CONTEXT_SLOT),
+            getCacheData(USER_CONTEXT_SLOT),
             getCacheData(RESOLVER_CONTEXT_SLOT)
         );
     }
@@ -234,12 +187,11 @@ contract UniversalSolver is IUniversalSolver {
         bytes32 _solutionHash,
         bool _intentAccepted,
         bool _locked,
-        bytes memory packedUserIntent,
-        bytes memory packedResolverSolution,
+        UserEnvelopeTx memory userEnvelopeTx,
+        ResolverSolution memory resolverSolution,
         bytes memory requesterContext,
         bytes memory resolverContext
     ) {
-        (bool isUsingResolver,,,,) = decodePolicy(policy);
         return (
             initator,
             intentHash,
@@ -257,12 +209,12 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function getEnvelopeTx(
-        bytes calldata packedUserIntent
-    ) public pure returns (
-        bytes calldata envelopeTx
-    ) {
-        return packedUserIntent[28 : ];
+    function getResolver(
+        ResolverSolution calldata resolverSolution
+    ) public view returns (address) {
+        return resolverSolution.resolver != address(0) 
+            ? resolverSolution.resolver 
+            : msg.sender;
     }
 
     function decodeValidatorAndIntent(
@@ -277,15 +229,43 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function sliceUserIntent(
-        uint256 _offset,
-        uint256 _length,
-        bytes calldata packedUserIntent
+    function getOffsetAndLength(uint256 _sliceInfo) 
+        public 
+        pure 
+        returns (uint256 offset, uint256 length) 
+    {
+        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
+    }
+
+    function getValidatorAndIntent(
+        uint256 offset,
+        uint256 length,
+        bytes calldata userEnvelopeTx
+    ) public pure returns (
+        address _validator,
+        bytes calldata intent
+    ) {
+        bytes calldata validatorAndIntent 
+        = sliceUserEnvelopeTx(
+            offset, 
+            length, 
+            userEnvelopeTx
+        );
+        return (
+            address(bytes20(validatorAndIntent[ : 20])),
+            validatorAndIntent[20 : ]
+        );
+    }
+
+    function sliceUserEnvelopeTx(
+        uint256 offset,
+        uint256 length,
+        bytes calldata userEnvelopeTx
     ) public pure returns (
         bytes calldata validatorAndIntent
     ) {
-        require(_length >= 20, LengthTooShort(_length));
-        return getEnvelopeTx(packedUserIntent)[_offset : _offset + _length];
+        require(length >= 20, LengthTooShort(_length));
+        return userEnvelopeTx[offset : offset + length];
     }
 
     function decodeUserIntent(
@@ -309,44 +289,21 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function decodeResolverSolution(
-        bytes calldata packedResolverSolution
-    ) public pure returns (
-        ResolverSolution memory resolverSolution
-    ) {
-        bytes32 _policy = bytes32(packedResolverSolution[0]);
-        (bool isUsingResolver,,,,) = decodePolicy(_policy);
-        (address executor, bytes calldata solution) = 
-            isUsingResolver 
-            ? (
-                address(bytes20(packedResolverSolution[1 : 21])), 
-                packedResolverSolution[21 : ]
-            )
-            : (address(0), packedResolverSolution[1 : ]);
-        return ResolverSolution(
-            _policy,
-            executor,
-            solution
-        );
-    }
-
     function decodePolicy(bytes32 _policy) 
         public 
         pure 
         returns (
-            bool isUsingResolver,
-            bool isCacheRequesterIntent,
+            bool isCacheUserEnvelopeTx,
+            bool isCacheUserIntent,
             bool isCacheResolverSolution,
-            bool isCacheResolverContext,
-            bool isCacheRequesterFullData
+            bool isCacheResolverContext
         ) 
     {
         return (
             uint256(_policy >> 255) == 1,
             (uint256(_policy >> 254) & 1) == 1,
             (uint256(_policy >> 253) & 1) == 1,
-            (uint256(_policy >> 252) & 1) == 1,
-            (uint256(_policy >> 251) & 1) == 1
+            (uint256(_policy >> 252) & 1) == 1
         );
     }
 
@@ -354,18 +311,20 @@ contract UniversalSolver is IUniversalSolver {
         address _sender,
         address _validator,
         address _resolver,
+        address _initator,
         bytes32 _policy,
-        bytes calldata validatorAndIntent,
-        bytes calldata packedResolverSolution
+        bytes32 _intentHash,
+        bytes32 _solutionHash,
+        uint256 _sliceInfo
     ) internal {
-        // Lưu user hợp lệ để xác minh trong callback.
         sender = _sender;
         validator = _validator;
         resolver = _resolver;
-        initator = msg.sender;
+        initator = _initator;
         policy = _policy;
-        intentHash = keccak256(validatorAndIntent);
-        solutionHash = keccak256(packedResolverSolution);
+        intentHash = _intentHash;
+        solutionHash = _solutionHash;
+        sliceInfo = _sliceInfo;
     }
 
     function _clearContext() internal {
@@ -379,7 +338,7 @@ contract UniversalSolver is IUniversalSolver {
         offset = 0;
         length = 0;
         intentAccepted = false;
-        _clearCacheData(bytes32(uint256(REQUESTER_INTENT_SLOT) + 1));
+        _clearCacheData(REQUESTER_INTENT_SLOT);
         _clearCacheData(RESOLVER_SOLUTION_SLOT);
         _clearCacheData(REQUESTER_CONTEXT_SLOT);
         _clearCacheData(RESOLVER_CONTEXT_SLOT);
@@ -400,29 +359,25 @@ contract UniversalSolver is IUniversalSolver {
         emit ValidateIntentSuccess(result);
     }
 
-    function _cacheRequesterIntent(
+    function _cacheUserIntent(
         bool isCacheRequesterIntent,
-        uint256 _offset,
-        uint256 _length,
-        bytes memory intent
+        bytes calldata intent
     ) internal {
         if (isCacheRequesterIntent) {
-            offset = _offset;
-            length = _length;
-            _setCacheData(REQUESTER_INTENT_SLOT, intent);
+            _setCacheData(USER_INTENT_SLOT, intent);
         }
     }
 
     function _cacheResolverSolution(
         bool isCacheResolverSolution,
-        bytes memory solution
+        bytes calldata solution
     ) internal {
         if (isCacheResolverSolution) {
             _setCacheData(RESOLVER_SOLUTION_SLOT, solution);
         }
     }
 
-    function _cacheRequesterContext(address _validator, bytes memory intent) internal {
+    function _cacheUserContext(address _validator, bytes calldata intent) internal {
         (bool success, bytes memory requesterContext) = _validator.staticcall(intent);
         require(success, CallRequesterContextFailed(_validator, intent));
         _setCacheData(REQUESTER_CONTEXT_SLOT, requesterContext);
@@ -431,7 +386,7 @@ contract UniversalSolver is IUniversalSolver {
     function _cacheResolverContext(
         bool isCacheResolverContext,
         address _resolver,
-        bytes memory solution
+        bytes calldata solution
     ) internal {
         if (isCacheResolverContext) {
             (bool success, bytes memory resolverContext) = _resolver.staticcall(solution);
@@ -440,18 +395,18 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _cacheRequesterFullData(
-        bool isCacheRequesterFullData,
-        bytes calldata packedUserIntent
+    function _cacheUserEnvelopeTx(
+        bool isCacheUserEnvelopeTx,
+        bytes calldata envelopeTx
     ) internal {
-        if (isCacheRequesterFullData) {
-            _setCacheData(REQUESTER_FULL_DATA_SLOT, packedUserIntent);
+        if (isCacheUserEnvelopeTx) {
+            _setCacheData(USER_ENVELOPE_TX_SLOT, envelopeTx);
         }
     }
 
     function _resolveSolution(
         address _resolver,
-        bytes memory solution
+        bytes calldata solution
     ) internal {
         // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
         // giải quyết theo các điều kiện mà intent đặt ra.
@@ -538,12 +493,5 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
-    }
-
-    function _getResolver(
-        bool isUsingResolver,
-        address _resolver
-    ) internal view returns (address) {
-        return isUsingResolver ? _resolver : msg.sender;
     }
 }
