@@ -32,6 +32,30 @@ interface IUniversalSolver {
     ) external;
 
     function senderCallback(bytes calldata validatorAndIntent) external;
+
+    function context() external view returns (
+        address _initator,
+        bytes32 _intentHash,
+        bytes32 _solutionHash,
+        uint256 _sliceInfo,
+        bool _intentAccepted,
+        UserIntent memory userIntent,
+        ResolverSolution memory resolverSolution,
+        bytes memory userContext,
+        bytes memory resolverContext
+    );
+
+    function fullContext() external view returns (
+        address _initator,
+        bytes32 _intentHash,
+        bytes32 _solutionHash,
+        bool _intentAccepted,
+        bool _isSolverActive,
+        UserEnvelopeTx memory userEnvelopeTx,
+        ResolverSolution memory resolverSolution,
+        bytes memory requesterContext,
+        bytes memory resolverContext
+    );
 }
 
 contract UniversalSolver is IUniversalSolver {
