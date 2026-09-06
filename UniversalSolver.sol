@@ -43,7 +43,6 @@ contract UniversalSolver is IUniversalSolver {
     uint32 public constant MASKING = type(uint32).max;
     uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
 
-    // Lưu trữ user để xác minh trong giai đoạn callback.
     address public transient sender;
     address public transient validator;
     address public transient resolver;
@@ -56,7 +55,7 @@ contract UniversalSolver is IUniversalSolver {
     // Biến nội bộ để xác minh intent đã được user chấp thuận trong giai đoạn callback hay không.
     bool public transient intentAccepted;
     // Biến nội bộ dùng để chống reentrancy và mở khóa thực thi cho hàm callback.
-    bool public transient locked;
+    bool public transient isSolverActive;
 
     error Reentrancy();
     error IntentNotAccepted();
@@ -85,12 +84,16 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     modifier nonReentrant {
-        if (locked) revert Reentrancy();
-        locked = true;
-
+        if (isSolverActive) revert Reentrancy();
+        isSolverActive = true;
         _;
+        isSolverActive = false;
+    }
 
-        locked = false;
+    // Kiểm tra Solver có đang chạy không.
+    modifier onlySolverActive {
+        require(isSolverActive, InactiveSolver());
+        _;
     }
 
     function resolve(
@@ -149,11 +152,9 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     // Đây là hàm nhận callback từ sender
-    function senderCallback(bytes calldata validatorAndIntent) external {
+    function senderCallback(bytes calldata validatorAndIntent) external onlySolverActive {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
         require(msg.sender == sender, InvalidUser(sender));
-        // Kiểm tra trạng thái hàm resolve có đang chạy không.
-        require(locked, InactiveSolver());
         (address _validator, bytes calldata intent) = decodeValidatorAndIntent(validatorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(_validator, intent);
@@ -200,7 +201,7 @@ contract UniversalSolver is IUniversalSolver {
         bytes32 _intentHash,
         bytes32 _solutionHash,
         bool _intentAccepted,
-        bool _locked,
+        bool _isSolverActive,
         UserEnvelopeTx memory userEnvelopeTx,
         ResolverSolution memory resolverSolution,
         bytes memory requesterContext,
@@ -211,7 +212,7 @@ contract UniversalSolver is IUniversalSolver {
             intentHash,
             solutionHash,
             intentAccepted,
-            locked,
+            isSolverActive,
             UserEnvelopeTx(
                 sender,
                 sliceInfo,
@@ -227,20 +228,20 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function getOffsetAndLength(uint256 _sliceInfo) 
-        public 
-        pure 
-        returns (uint256 offset, uint256 length) 
-    {
-        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
-    }
-
     function getResolver(
         ResolverSolution calldata resolverSolution
     ) public view returns (address) {
         return resolverSolution.resolver != address(0) 
             ? resolverSolution.resolver 
             : msg.sender;
+    }
+
+    function getOffsetAndLength(uint256 _sliceInfo) 
+        public 
+        pure 
+        returns (uint256 offset, uint256 length) 
+    {
+        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
     }
 
     function decodeValidatorAndIntent(
@@ -270,7 +271,7 @@ contract UniversalSolver is IUniversalSolver {
             userEnvelopeTx
         );
         return (
-            address(bytes20(validatorAndIntent[ : 20])),
+            address(bytes20(validatorAndIntent[0 : 20])),
             validatorAndIntent[20 : ]
         );
     }
