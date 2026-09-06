@@ -53,7 +53,7 @@ interface IUniversalSolver {
         bool _isSolverActive,
         UserEnvelopeTx memory userEnvelopeTx,
         ResolverSolution memory resolverSolution,
-        bytes memory requesterContext,
+        bytes memory userContext,
         bytes memory resolverContext
     );
 }
