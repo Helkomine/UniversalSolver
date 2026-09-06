@@ -440,9 +440,7 @@ contract UniversalSolver is IUniversalSolver {
         emit ValidateIntentPhaseSuccess(_validator, result);
     }
 
-    function getCacheData(
-        bytes32 namespace
-    ) 
+    function getCacheData(bytes32 namespace) 
         public 
         view 
         returns (bytes memory data) 
