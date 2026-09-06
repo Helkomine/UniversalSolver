@@ -286,7 +286,7 @@ contract UniversalSolver is IUniversalSolver {
         return userEnvelopeTx[offset : offset + length];
     }
 
-    function decodeUserIntent(
+    function getUserIntent(
         UserEnvelopeTx calldata userEnvelopeTx
     ) public pure returns (
         UserIntent memory userIntent
