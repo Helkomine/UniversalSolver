@@ -281,12 +281,12 @@ contract UniversalSolver is IUniversalSolver {
     function sliceUserEnvelopeTx(
         uint256 offset,
         uint256 length,
-        bytes calldata userEnvelopeTx
+        bytes calldata envelopeTx
     ) public pure returns (
         bytes calldata validatorAndIntent
     ) {
         require(length >= 20, LengthTooShort(length));
-        return userEnvelopeTx[offset : offset + length];
+        return envelopeTx[offset : offset + length];
     }
 
     function getUserIntent(
