@@ -6,7 +6,7 @@ interface IUniversalSolver {
     event ContextPhaseSuccess();
     event ValidateSenderPhaseSuccess(address sender, bytes result);
     event ResolvePhaseSuccess(address resolver, bytes result);
-    event ValidateIntentPhaseSuccess(address validator, bytes intent);
+    event ValidateIntentPhaseSuccess(address validator, bytes result);
 
     struct UserIntent {
         address sender;
