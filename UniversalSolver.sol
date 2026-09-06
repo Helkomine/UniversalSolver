@@ -285,28 +285,26 @@ contract UniversalSolver is IUniversalSolver {
         require(length >= 20, LengthTooShort(length));
         return userEnvelopeTx[offset : offset + length];
     }
-/*
+
     function decodeUserIntent(
-        bytes calldata packedUserIntent
+        UserEnvelopeTx calldata userEnvelopeTx
     ) public pure returns (
         UserIntent memory userIntent
     ) {
-        address _sender = address(bytes20(packedUserIntent[0 : 20]));
-        uint256 _offset = uint32(bytes4(packedUserIntent[20 : 24]));
-        uint256 _length = uint32(bytes4(packedUserIntent[24 : 28]));
-        bytes calldata validatorAndIntent = 
-        sliceUserIntent(_sender, _length, packedUserIntent);
-        (address _validator, bytes calldata intent) = 
-        decodeValidatorAndIntent(validatorAndIntent);
+        (uint256 offset, uint256 length) = getOffsetAndLength(userEnvelopeTx.sliceInfo);
+        (address _validator, bytes calldata intent) 
+        = getValidatorAndIntent(
+            offset,
+            length,
+            userEnvelopeTx.envelopeTx
+        );
         return UserIntent(
-            _sender,
-            _offset,
-            _length,
+            userEnvelopeTx.sender,
             _validator,
             intent
         );
     }
-*/
+
     function decodePolicy(bytes32 _policy) 
         public 
         pure 
@@ -376,6 +374,15 @@ contract UniversalSolver is IUniversalSolver {
         emit ValidateIntentSuccess(result);
     }
 
+    function _cacheUserEnvelopeTx(
+        bool isCacheUserEnvelopeTx,
+        bytes calldata envelopeTx
+    ) internal {
+        if (isCacheUserEnvelopeTx) {
+            _setCacheData(USER_ENVELOPE_TX_SLOT, envelopeTx);
+        }
+    }
+
     function _cacheUserIntent(
         bool isCacheRequesterIntent,
         bytes calldata intent
@@ -412,15 +419,6 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _cacheUserEnvelopeTx(
-        bool isCacheUserEnvelopeTx,
-        bytes calldata envelopeTx
-    ) internal {
-        if (isCacheUserEnvelopeTx) {
-            _setCacheData(USER_ENVELOPE_TX_SLOT, envelopeTx);
-        }
-    }
-
     function _resolveSolution(
         address _resolver,
         bytes calldata solution
@@ -432,7 +430,7 @@ contract UniversalSolver is IUniversalSolver {
         emit SolverResult(result);
     }
 
-    function _validateIntent(address _validator, bytes memory intent) internal {
+    function _validateIntent(address _validator, bytes calldata intent) internal {
         // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
         // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
         // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
