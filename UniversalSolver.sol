@@ -261,7 +261,7 @@ contract UniversalSolver is IUniversalSolver {
     function getValidatorAndIntent(
         uint256 offset,
         uint256 length,
-        bytes calldata userEnvelopeTx
+        bytes calldata envelopeTx
     ) public pure returns (
         address _validator,
         bytes calldata intent
@@ -270,7 +270,7 @@ contract UniversalSolver is IUniversalSolver {
         = sliceUserEnvelopeTx(
             offset, 
             length, 
-            userEnvelopeTx
+            envelopeTx
         );
         return (
             address(bytes20(validatorAndIntent[0 : 20])),
