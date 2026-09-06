@@ -230,7 +230,7 @@ contract UniversalSolver is IUniversalSolver {
         bool _isSolverActive,
         UserEnvelopeTx memory userEnvelopeTx,
         ResolverSolution memory resolverSolution,
-        bytes memory requesterContext,
+        bytes memory userContext,
         bytes memory resolverContext
     ) {
         return (
@@ -430,9 +430,9 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserContext(address _validator, bytes calldata intent) internal {
-        (bool success, bytes memory requesterContext) = _validator.staticcall(intent);
+        (bool success, bytes memory userContext) = _validator.staticcall(intent);
         require(success, CallRequesterContextFailed(_validator, intent));
-        _setCacheData(USER_CONTEXT_SLOT, requesterContext);
+        _setCacheData(USER_CONTEXT_SLOT, userContext);
     }
 
     function _cacheResolverContext(
