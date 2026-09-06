@@ -412,10 +412,10 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserIntent(
-        bool isCacheRequesterIntent,
+        bool isCacheUserIntent,
         bytes calldata intent
     ) internal {
-        if (isCacheRequesterIntent) {
+        if (isCacheUserIntent) {
             _setCacheData(USER_INTENT_SLOT, intent);
         }
     }
