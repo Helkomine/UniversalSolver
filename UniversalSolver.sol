@@ -490,6 +490,32 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
+        bytes4 errorSelector = TotalSlotTooLarge.selector;
+        uint32 maxTotalSlot = MAX_TOTAL_SLOT;
+        assembly ("memory-safe") {
+            let length := data.length
+            if length {
+                let floorTotalSlot := shr(5, length)
+                let totalSlot := shr(5, add(length, 31))
+                if gt(totalSlot, maxTotalSlot) {
+                    mstore(0, errorSelector)
+                    mstore(4, totalSlot)
+                    revert(0, 36)
+                }
+                tstore(namespace, length)
+                namespace := add(namespace, 1)
+                let offset := data.offset
+                for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
+                    tstore(add(namespace, i), calldataload(add(offset, shl(5, i))))
+                }
+                let bitsLeft := mul(sub(length, shl(5, floorTotalSlot)), 8)
+                let mask := shl(bitsLeft, shr(bitsLeft, calldataload(add(offset, shl(5, floorTotalSlot)))))
+                tstore(add(namespace, totalSlot), mask)
+            }
+        }
+    }
+
     function _setCacheData(bytes32 namespace, bytes memory data) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint32 maxTotalSlot = MAX_TOTAL_SLOT;
