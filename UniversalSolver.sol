@@ -227,6 +227,14 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
+    function getOffsetAndLength(uint256 _sliceInfo) 
+        public 
+        pure 
+        returns (uint256 offset, uint256 length) 
+    {
+        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
+    }
+
     function getResolver(
         ResolverSolution calldata resolverSolution
     ) public view returns (address) {
@@ -245,14 +253,6 @@ contract UniversalSolver is IUniversalSolver {
             address(bytes20(validatorAndIntent[0 : 20])),
             validatorAndIntent[20 : ]
         );
-    }
-
-    function getOffsetAndLength(uint256 _sliceInfo) 
-        public 
-        pure 
-        returns (uint256 offset, uint256 length) 
-    {
-        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
     }
 
     function getValidatorAndIntent(
@@ -512,8 +512,3 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 }
-
-
-
-
-
