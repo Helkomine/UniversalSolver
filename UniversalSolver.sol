@@ -3,9 +3,10 @@ pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
 interface IUniversalSolver {
-    event ValidateIntentSuccess(bytes intent);
-    event RequesterResult(bytes result);
-    event SolverResult(bytes result);
+    event ContextPhaseSuccess();
+    event ValidateSenderPhaseSuccess(address sender, bytes result);
+    event ResolvePhaseSuccess(address resolver, bytes result);
+    event ValidateIntentPhaseSuccess(address validator, bytes intent);
 
     struct UserIntent {
         address sender;
@@ -34,14 +35,13 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
+    uint32 public constant MAX_TOTAL_SLOT = type(uint32).max;
+    uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 public constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
     bytes32 public constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
     bytes32 public constant RESOLVER_SOLUTION_SLOT = bytes32(erc7201("resolver.solution.slot"));
     bytes32 public constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
     bytes32 public constant RESOLVER_CONTEXT_SLOT = bytes32(erc7201("resolver.context.slot"));
-    uint32 public constant MAX_TOTAL_SLOT = type(uint32).max;
-    uint32 public constant MASKING = type(uint32).max;
-    uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
 
     address public transient sender;
     address public transient validator;
@@ -71,6 +71,7 @@ contract UniversalSolver is IUniversalSolver {
     error RequesterFailed(bytes result);
     error SolverFailed(bytes result);
 
+    // Tránh stack too deep
     struct Flags {
         bool isCacheUserEnvelopeTx;
         bool isCacheUserIntent;
@@ -78,6 +79,7 @@ contract UniversalSolver is IUniversalSolver {
         bool isCacheResolverContext;
     }
 
+    // Tránh stack too deep
     struct SilceInfo {
         uint256 offset;
         uint256 length;
@@ -124,7 +126,7 @@ contract UniversalSolver is IUniversalSolver {
         _cacheUserContext(_validator, intent);
         _cacheResolverContext(
             flags.isCacheResolverContext,
-            resolverSolution.resolver,
+            getResolver(resolverSolution),
             resolverSolution.solution
         );
         _setContext(
@@ -144,7 +146,7 @@ contract UniversalSolver is IUniversalSolver {
             userEnvelopeTx.sliceInfo
         );
         _validateOnSender(userEnvelopeTx.sender, userEnvelopeTx.envelopeTx);
-        _resolveSolution(resolverSolution.resolver, resolverSolution.solution);
+        _resolveSolution(getResolver(resolverSolution), resolverSolution.solution);
         _validateIntent(_validator, intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
@@ -342,6 +344,7 @@ contract UniversalSolver is IUniversalSolver {
         intentHash = _intentHash;
         solutionHash = _solutionHash;
         sliceInfo = _sliceInfo;
+        emit ContextPhaseSuccess();
     }
 
     function _clearContext() internal {
@@ -372,7 +375,7 @@ contract UniversalSolver is IUniversalSolver {
         // số dư đều được khôi phục làm cho tài khoản user trở lại nguyên trạng.
         require(intentAccepted, IntentNotAccepted());
         // Phát log sau khi đã được xác thực hoàn tất.
-        emit ValidateIntentSuccess(result);
+        emit ValidateSenderPhaseSuccess(_sender, result);
     }
 
     function _cacheUserEnvelopeTx(
@@ -428,16 +431,13 @@ contract UniversalSolver is IUniversalSolver {
         // giải quyết theo các điều kiện mà intent đặt ra.
         (bool success, bytes memory result) = _resolver.call(solution);
         require(success, SolverFailed(result));
-        emit SolverResult(result);
+        emit ResolvePhaseSuccess(_resolver, result);
     }
 
     function _validateIntent(address _validator, bytes calldata intent) internal {
-        // Để đơn giản và linh hoạt, Solver gọi đến hợp đồng interpreter sau khi resolver hoàn tất để
-        // cho phép calldata tĩnh hoạt động như một EVM bytecode, điều này cho phép điều kiện có thể
-        // được lập trình bằng cách ngôn ngữ cấp cao như Solidity.
         (bool success, bytes memory result) = _validator.call(intent);
         require(success, RequesterFailed(result));
-        emit RequesterResult(result);
+        emit ValidateIntentPhaseSuccess(_validator, result);
     }
 
     function getCacheData(
@@ -472,19 +472,19 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint32 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
-            let length_ := mload(data)
-            if length_ {
-                let totalSlot := shr(5, add(length_, 31))
+            let length := mload(data)
+            if length {
+                let totalSlot := shr(5, add(length, 31))
                 if gt(totalSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                tstore(namespace, length_)
+                tstore(namespace, length)
                 namespace := add(namespace, 1)
-                let offset_ := add(data, 32)
+                let offset := add(data, 32)
                 for { let i } lt(i, totalSlot) { i := add(i, 1) } {
-                    tstore(add(namespace, i), mload(add(offset_, shl(5, i))))
+                    tstore(add(namespace, i), mload(add(offset, shl(5, i))))
                 }
             }
         }
@@ -494,9 +494,9 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint32 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
-            let length_ := tload(namespace)
-            if length_ {
-                let totalSlot := shr(5, add(length_, 31))
+            let length := tload(namespace)
+            if length {
+                let totalSlot := shr(5, add(length, 31))
                 if gt(totalSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
                     mstore(4, totalSlot)
