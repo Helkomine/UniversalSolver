@@ -4,9 +4,9 @@ pragma solidity ^0.8.35;
 
 interface IUniversalSolver {
     event ContextPhaseSuccess();
-    event ValidateSenderPhaseSuccess(address sender, bytes result);
-    event ResolvePhaseSuccess(address resolver, bytes result);
-    event ValidateIntentPhaseSuccess(address validator, bytes result);
+    event ValidateSenderPhaseSuccess(address indexed sender, bytes result);
+    event ResolvePhaseSuccess(address indexed resolver, bytes result);
+    event ValidateIntentPhaseSuccess(address indexed validator, bytes result);
 
     struct UserIntent {
         address sender;
