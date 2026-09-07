@@ -88,7 +88,7 @@ contract UniversalSolver is IUniversalSolver {
     error TotalSlotTooLarge(uint256 totalSlot);
     error CallRequesterContextFailed(address validator, bytes reason);
     error CallResolverContextFailed(address resolver, bytes reason);
-    error InvalidUser(address user);
+    error InvalidSender(address sender);
     error IntentAccepted(address validator, bytes intent);
     error InvalidIntent(address validator, bytes intent);
     error ValidateIntentFailed(bytes result);
@@ -180,7 +180,7 @@ contract UniversalSolver is IUniversalSolver {
     // Đây là hàm nhận callback từ sender
     function senderCallback(bytes calldata validatorAndIntent) external onlySolverActive {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
-        require(msg.sender == sender, InvalidUser(sender));
+        require(msg.sender == sender, InvalidSender(sender));
         (address _validator, bytes calldata intent) = decodeValidatorAndIntent(validatorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(_validator, intent);
