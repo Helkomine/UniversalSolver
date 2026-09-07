@@ -160,7 +160,7 @@ contract UniversalSolver is IUniversalSolver {
             msg.sender,
             resolverSolution.policy,
             keccak256(
-                sliceUserEnvelopeTx(
+                sliceEnvelopeTx(
                     _sliceInfo.offset,
                     _sliceInfo.length,
                     userEnvelopeTx.envelopeTx
@@ -291,7 +291,7 @@ contract UniversalSolver is IUniversalSolver {
         bytes calldata intent
     ) {
         bytes calldata validatorAndIntent 
-        = sliceUserEnvelopeTx(
+        = sliceEnvelopeTx(
             offset, 
             length, 
             envelopeTx
@@ -302,7 +302,7 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function sliceUserEnvelopeTx(
+    function sliceEnvelopeTx(
         uint256 offset,
         uint256 length,
         bytes calldata envelopeTx
