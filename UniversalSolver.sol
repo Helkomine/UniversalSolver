@@ -389,6 +389,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _validateOnSender(address _sender, bytes calldata envelopeTx) internal {
+        uint256 ptr = _getFreePtr();
         // Solver gọi đến user để xác thực và thiết lập môi trường cần thiết, chẳng hạn chuyển số dư
         // cần hoán đổi đến địa chỉ dễ tiếp cận để cho phép resolver giải quyết ở vào giai đoạn sau.
         (bool success, bytes memory result) = _sender.call(envelopeTx);
@@ -400,6 +401,7 @@ contract UniversalSolver is IUniversalSolver {
         require(intentAccepted, IntentNotAccepted());
         // Phát log sau khi đã được xác thực hoàn tất.
         emit ValidateSenderPhaseSuccess(_sender, result);
+        _restoreFreePtr(ptr);
     }
 
     function _cacheUserEnvelopeTx(
@@ -430,9 +432,11 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserContext(address _validator, bytes calldata intent) internal {
+        uint256 ptr = _getFreePtr();
         (bool success, bytes memory userContext) = _validator.staticcall(intent);
         require(success, CallRequesterContextFailed(_validator, intent));
         _setCacheData(USER_CONTEXT_SLOT, userContext);
+        _restoreFreePtr(ptr);
     }
 
     function _cacheResolverContext(
@@ -441,9 +445,11 @@ contract UniversalSolver is IUniversalSolver {
         bytes calldata solution
     ) internal {
         if (isCacheResolverContext) {
+            uint256 ptr = _getFreePtr();
             (bool success, bytes memory resolverContext) = _resolver.staticcall(solution);
             require(success, CallResolverContextFailed(_resolver, resolverContext));
             _setCacheData(RESOLVER_CONTEXT_SLOT, resolverContext);
+            _restoreFreePtr(ptr);
         }
     }
 
@@ -451,17 +457,21 @@ contract UniversalSolver is IUniversalSolver {
         address _resolver,
         bytes calldata solution
     ) internal {
+        uint256 ptr = _getFreePtr();
         // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
         // giải quyết theo các điều kiện mà intent đặt ra.
         (bool success, bytes memory result) = _resolver.call(solution);
         require(success, SolverFailed(result));
         emit ResolvePhaseSuccess(_resolver, result);
+        _restoreFreePtr(ptr);
     }
 
     function _validateIntent(address _validator, bytes calldata intent) internal {
+        uint256 ptr = _getFreePtr();
         (bool success, bytes memory result) = _validator.call(intent);
         require(success, RequesterFailed(result));
         emit ValidateIntentPhaseSuccess(_validator, result);
+        _restoreFreePtr(ptr);
     }
 
     function getCacheData(bytes32 namespace) 
@@ -581,6 +591,28 @@ contract UniversalSolver is IUniversalSolver {
                     tstore(add(namespace, i), 0)
                 }
             }
+        }
+    }
+
+    /**
+     * save free memory pointer.
+     * save "free memory" pointer, so that it can be restored later using restoreFreePtr.
+     * This reduce unneeded memory expansion, and reduce memory expansion cost.
+     * NOTE: all dynamic allocations between saveFreePtr and restoreFreePtr MUST NOT be used after restoreFreePtr is called.
+     */
+    function _getFreePtr() internal pure returns (uint256 ptr) {
+        assembly ("memory-safe") {
+            ptr := mload(0x40)
+        }
+    }
+
+    /**
+     * restore free memory pointer.
+     * any allocated memory since saveFreePtr is cleared, and MUST NOT be accessed later.
+     */
+    function _restoreFreePtr(uint256 ptr) internal pure {
+        assembly ("memory-safe") {
+            mstore(0x40, ptr)
         }
     }
 }
