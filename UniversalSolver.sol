@@ -472,6 +472,7 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint32 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
+            data := mload(64)
             let length := tload(namespace)
             if length {
                 let floorTotalSlot := shr(5, length)
@@ -490,11 +491,12 @@ contract UniversalSolver is IUniversalSolver {
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, shl(3, bytesLeft))
                     let rawWord := tload(add(namespace, floorTotalSlot))
-                    let mask := shl(bitsLeft, shr(bitsLeft, rawWord))
+                    let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     mstore(add(offset, roundingLength), mask)
                 }
+                mstore(64, add(add(data, 32), shl(5, totalSlot)))
             }
         }
     }
@@ -521,9 +523,9 @@ contract UniversalSolver is IUniversalSolver {
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, shl(3, bytesLeft))
                     let rawWord := calldataload(add(offset, roundingLength))
-                    let mask := shl(bitsLeft, shr(bitsLeft, rawWord))
+                    let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     tstore(add(namespace, floorTotalSlot), mask)
                 }
             }
@@ -552,9 +554,9 @@ contract UniversalSolver is IUniversalSolver {
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, shl(3, bytesLeft))
                     let rawWord := mload(add(offset, roundingLength))
-                    let mask := shl(bitsLeft, shr(bitsLeft, rawWord))
+                    let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     tstore(add(namespace, floorTotalSlot), mask)
                 }
             }
