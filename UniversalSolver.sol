@@ -93,7 +93,7 @@ contract UniversalSolver is IUniversalSolver {
     error InvalidIntent(address validator, bytes intent);
     error ValidateIntentFailed(bytes result);
     error UserFailed(bytes result);
-    error SolverFailed(bytes result);
+    error ResolveFailed(bytes result);
 
     // Tránh stack too deep
     struct Flags {
@@ -384,7 +384,7 @@ contract UniversalSolver is IUniversalSolver {
         // Solver chuyển giao toàn bộ công việc cho resolver, resolver được tự do lựa chọn phương án
         // giải quyết theo các điều kiện mà intent đặt ra.
         (bool success, bytes memory result) = _resolver.call(solution);
-        require(success, SolverFailed(result));
+        require(success, ResolveFailed(result));
         emit ResolvePhaseSuccess(_resolver, result);
         _restoreFreePtr(ptr);
     }
