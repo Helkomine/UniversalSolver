@@ -506,7 +506,7 @@ contract UniversalSolver is IUniversalSolver {
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     mstore(add(offset, roundingLength), mask)
                 }
-                mstore(64, add(add(data, 32), shl(5, totalSlot)))
+                mstore(64, add(offset, shl(5, totalSlot)))
             }
         }
     }
