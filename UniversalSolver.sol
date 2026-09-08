@@ -59,7 +59,7 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
-    uint32 public constant MAX_TOTAL_SLOT = type(uint32).max;
+    uint128 public constant MAX_TOTAL_SLOT = type(uint128).max;
     uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 public constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
     bytes32 public constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
@@ -480,7 +480,7 @@ contract UniversalSolver is IUniversalSolver {
         returns (bytes memory data) 
     {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint32 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint128 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
             data := mload(64)
             let length := tload(namespace)
@@ -513,7 +513,7 @@ contract UniversalSolver is IUniversalSolver {
 
     function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint32 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint128 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
             let length := data.length
             if length {
@@ -544,7 +544,7 @@ contract UniversalSolver is IUniversalSolver {
 
     function _setCacheData(bytes32 namespace, bytes memory data) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint32 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint128 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
             let length := mload(data)
             if length {
@@ -575,7 +575,7 @@ contract UniversalSolver is IUniversalSolver {
 
     function _clearCacheData(bytes32 namespace) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint32 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint128 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
             let length := tload(namespace)
             if length {
