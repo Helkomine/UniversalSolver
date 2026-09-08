@@ -150,13 +150,13 @@ contract UniversalSolver is IUniversalSolver {
         _cacheUserContext(_validator, intent);
         _cacheResolverContext(
             flags.isCacheResolverContext,
-            getResolver(resolverSolution),
+            getResolver(resolverSolution.resolver),
             resolverSolution.solution
         );
         _setContext(
             userEnvelopeTx.sender,
             _validator,
-            getResolver(resolverSolution),
+            getResolver(resolverSolution.resolver),
             msg.sender,
             resolverSolution.policy,
             keccak256(
@@ -170,7 +170,7 @@ contract UniversalSolver is IUniversalSolver {
             userEnvelopeTx.sliceInfo
         );
         _validateOnSender(userEnvelopeTx.sender, userEnvelopeTx.envelopeTx);
-        _resolveSolution(getResolver(resolverSolution), resolverSolution.solution);
+        _resolveSolution(getResolver(resolverSolution.resolver), resolverSolution.solution);
         _validateIntent(_validator, intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
@@ -254,65 +254,6 @@ contract UniversalSolver is IUniversalSolver {
         );
     }
 
-    function getResolver(
-        ResolverSolution calldata resolverSolution
-    ) public view returns (address) {
-        return resolverSolution.resolver != address(0) 
-            ? resolverSolution.resolver 
-            : msg.sender;
-    }
-
-    function getOffsetAndLength(uint256 _sliceInfo) 
-        public 
-        pure 
-        returns (uint256 offset, uint256 length) 
-    {
-        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
-    }
-
-    function decodeValidatorAndIntent(
-        bytes calldata validatorAndIntent
-    ) public pure returns (
-        address _validator,
-        bytes calldata intent
-    ) {
-        return (
-            address(bytes20(validatorAndIntent[0 : 20])),
-            validatorAndIntent[20 : ]
-        );
-    }
-
-    function getValidatorAndIntent(
-        uint256 offset,
-        uint256 length,
-        bytes calldata envelopeTx
-    ) public pure returns (
-        address _validator,
-        bytes calldata intent
-    ) {
-        bytes calldata validatorAndIntent 
-        = sliceEnvelopeTx(
-            offset, 
-            length, 
-            envelopeTx
-        );
-        return (
-            address(bytes20(validatorAndIntent[0 : 20])),
-            validatorAndIntent[20 : ]
-        );
-    }
-
-    function sliceEnvelopeTx(
-        uint256 offset,
-        uint256 length,
-        bytes calldata envelopeTx
-    ) public pure returns (
-        bytes calldata validatorAndIntent
-    ) {
-        require(length >= 20, LengthTooShort(length));
-        return envelopeTx[offset : offset + length];
-    }
-
     function getUserIntent(
         UserEnvelopeTx calldata userEnvelopeTx
     ) public pure returns (
@@ -329,24 +270,6 @@ contract UniversalSolver is IUniversalSolver {
             userEnvelopeTx.sender,
             _validator,
             intent
-        );
-    }
-
-    function decodePolicy(bytes32 _policy) 
-        public 
-        pure 
-        returns (
-            bool isCacheEnvelopeTx,
-            bool isCacheIntent,
-            bool isCacheSolution,
-            bool isCacheResolverContext
-        ) 
-    {
-        return (
-            uint256(_policy >> 255) == 1,
-            (uint256(_policy >> 254) & 1) == 1,
-            (uint256(_policy >> 253) & 1) == 1,
-            (uint256(_policy >> 252) & 1) == 1
         );
     }
 
@@ -592,6 +515,81 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
+    }
+
+    function getResolver(
+        address _resolver
+    ) internal view returns (address) {
+        return _resolver != address(0) ? _resolver : msg.sender;
+    }
+
+    function getOffsetAndLength(uint256 _sliceInfo) 
+        internal 
+        pure 
+        returns (uint256 offset, uint256 length) 
+    {
+        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
+    }
+
+    function decodeValidatorAndIntent(
+        bytes calldata validatorAndIntent
+    ) internal pure returns (
+        address _validator,
+        bytes calldata intent
+    ) {
+        return (
+            address(bytes20(validatorAndIntent[0 : 20])),
+            validatorAndIntent[20 : ]
+        );
+    }
+
+    function getValidatorAndIntent(
+        uint256 offset,
+        uint256 length,
+        bytes calldata envelopeTx
+    ) internal pure returns (
+        address _validator,
+        bytes calldata intent
+    ) {
+        bytes calldata validatorAndIntent 
+        = sliceEnvelopeTx(
+            offset, 
+            length, 
+            envelopeTx
+        );
+        return (
+            address(bytes20(validatorAndIntent[0 : 20])),
+            validatorAndIntent[20 : ]
+        );
+    }
+
+    function sliceEnvelopeTx(
+        uint256 offset,
+        uint256 length,
+        bytes calldata envelopeTx
+    ) internal pure returns (
+        bytes calldata validatorAndIntent
+    ) {
+        require(length >= 20, LengthTooShort(length));
+        return envelopeTx[offset : offset + length];
+    }
+
+    function decodePolicy(bytes32 _policy) 
+        internal 
+        pure 
+        returns (
+            bool isCacheEnvelopeTx,
+            bool isCacheIntent,
+            bool isCacheSolution,
+            bool isCacheResolverContext
+        ) 
+    {
+        return (
+            uint256(_policy >> 255) == 1,
+            (uint256(_policy >> 254) & 1) == 1,
+            (uint256(_policy >> 253) & 1) == 1,
+            (uint256(_policy >> 252) & 1) == 1
+        );
     }
 
     /**
