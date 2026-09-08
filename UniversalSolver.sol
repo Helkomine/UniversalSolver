@@ -109,11 +109,6 @@ contract UniversalSolver is IUniversalSolver {
         uint256 length;
     }
 
-    struct ValidatorAndIntent {
-        address validator;
-        bytes intent;
-    }
-
     modifier nonReentrant {
         if (isSolverActive) revert Reentrancy();
         isSolverActive = true;
@@ -142,11 +137,7 @@ contract UniversalSolver is IUniversalSolver {
         SilceInfo memory _sliceInfo;
         (_sliceInfo.offset, _sliceInfo.length) = getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
-        ValidatorAndIntent memory validatorAndIntent;
-        (
-            validatorAndIntent.validator, 
-            validatorAndIntent.intent
-        ) 
+        (address _validator, bytes calldata intent) 
         = getValidatorAndIntent(
             _sliceInfo.offset,
             _sliceInfo.length,
@@ -154,9 +145,9 @@ contract UniversalSolver is IUniversalSolver {
         );
 
         _cacheUserEnvelopeTx(flags.isCacheUserEnvelopeTx, userEnvelopeTx.envelopeTx);
-        _cacheUserIntent(flags.isCacheUserIntent, validatorAndIntent.intent);
+        _cacheUserIntent(flags.isCacheUserIntent, intent);
         _cacheResolverSolution(flags.isCacheResolverSolution, resolverSolution.solution);
-        _cacheUserContext(validatorAndIntent.validator, validatorAndIntent.intent);
+        _cacheUserContext(_validator, intent);
         _cacheResolverContext(
             flags.isCacheResolverContext,
             getResolver(resolverSolution),
@@ -164,7 +155,7 @@ contract UniversalSolver is IUniversalSolver {
         );
         _setContext(
             userEnvelopeTx.sender,
-            validatorAndIntent.validator,
+            _validator,
             getResolver(resolverSolution),
             msg.sender,
             resolverSolution.policy,
@@ -175,12 +166,12 @@ contract UniversalSolver is IUniversalSolver {
                     userEnvelopeTx.envelopeTx
                 )
             ), 
-            hash(resolverSolution.solution),
+            keccak256(resolverSolution.solution),
             userEnvelopeTx.sliceInfo
         );
         _validateOnSender(userEnvelopeTx.sender, userEnvelopeTx.envelopeTx);
         _resolveSolution(getResolver(resolverSolution), resolverSolution.solution);
-        _validateIntent(validatorAndIntent.validator, validatorAndIntent.intent);
+        _validateIntent(_validator, intent);
 
         // Xóa các thông tin về intent và hoàn tất chu trình làm việc.
         _clearContext();
@@ -357,13 +348,6 @@ contract UniversalSolver is IUniversalSolver {
             (uint256(_policy >> 253) & 1) == 1,
             (uint256(_policy >> 252) & 1) == 1
         );
-    }
-
-    function hash(bytes calldata data) public pure returns (bytes32) {
-        uint256 ptr = _getFreePtr();
-        bytes32 _hash = keccak256(data);
-        _restoreFreePtr(ptr);
-        return _hash;
     }
 
     function _setContext(
