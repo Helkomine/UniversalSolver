@@ -61,9 +61,9 @@ interface IUniversalSolver {
 contract UniversalSolver is IUniversalSolver {
     uint128 public constant MAX_TOTAL_SLOT = type(uint128).max;
     uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
-    bytes32 public constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
-    bytes32 public constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
-    bytes32 public constant RESOLVER_SOLUTION_SLOT = bytes32(erc7201("resolver.solution.slot"));
+    bytes32 public constant ENVELOPE_TX_SLOT = bytes32(erc7201("envelope.tx.slot"));
+    bytes32 public constant INTENT_SLOT = bytes32(erc7201("intent.slot"));
+    bytes32 public constant SOLUTION_SLOT = bytes32(erc7201("solution.slot"));
     bytes32 public constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
     bytes32 public constant RESOLVER_CONTEXT_SLOT = bytes32(erc7201("resolver.context.slot"));
 
@@ -97,9 +97,9 @@ contract UniversalSolver is IUniversalSolver {
 
     // Tránh stack too deep
     struct Flags {
-        bool isCacheUserEnvelopeTx;
-        bool isCacheUserIntent;
-        bool isCacheResolverSolution;
+        bool isCacheEnvelopeTx;
+        bool isCacheIntent;
+        bool isCacheSolution;
         bool isCacheResolverContext;
     }
 
@@ -128,9 +128,9 @@ contract UniversalSolver is IUniversalSolver {
     ) public nonReentrant {
         Flags memory flags;
         (
-            flags.isCacheUserEnvelopeTx,
-            flags.isCacheUserIntent,
-            flags.isCacheResolverSolution,
+            flags.isCacheEnvelopeTx,
+            flags.isCacheIntent,
+            flags.isCacheSolution,
             flags.isCacheResolverContext
         ) = decodePolicy(resolverSolution.policy);
 
@@ -144,9 +144,9 @@ contract UniversalSolver is IUniversalSolver {
             userEnvelopeTx.envelopeTx
         );
 
-        _cacheUserEnvelopeTx(flags.isCacheUserEnvelopeTx, userEnvelopeTx.envelopeTx);
-        _cacheUserIntent(flags.isCacheUserIntent, intent);
-        _cacheResolverSolution(flags.isCacheResolverSolution, resolverSolution.solution);
+        _cacheEnvelopeTx(flags.isCacheEnvelopeTx, userEnvelopeTx.envelopeTx);
+        _cacheIntent(flags.isCacheIntent, intent);
+        _cacheSolution(flags.isCacheSolution, resolverSolution.solution);
         _cacheUserContext(_validator, intent);
         _cacheResolverContext(
             flags.isCacheResolverContext,
@@ -210,12 +210,12 @@ contract UniversalSolver is IUniversalSolver {
             UserIntent(
                 sender,
                 validator,
-                getCacheData(USER_INTENT_SLOT)
+                getCacheData(INTENT_SLOT)
             ),
             ResolverSolution(
                 resolver,
                 policy,
-                getCacheData(RESOLVER_SOLUTION_SLOT)
+                getCacheData(SOLUTION_SLOT)
             ),
             getCacheData(USER_CONTEXT_SLOT),
             getCacheData(RESOLVER_CONTEXT_SLOT)
@@ -242,12 +242,12 @@ contract UniversalSolver is IUniversalSolver {
             UserEnvelopeTx(
                 sender,
                 sliceInfo,
-                getCacheData(USER_ENVELOPE_TX_SLOT)
+                getCacheData(ENVELOPE_TX_SLOT)
             ),
             ResolverSolution(
                 resolver,
                 policy,
-                getCacheData(RESOLVER_SOLUTION_SLOT)
+                getCacheData(SOLUTION_SLOT)
             ),
             getCacheData(USER_CONTEXT_SLOT),
             getCacheData(RESOLVER_CONTEXT_SLOT)
@@ -336,9 +336,9 @@ contract UniversalSolver is IUniversalSolver {
         public 
         pure 
         returns (
-            bool isCacheUserEnvelopeTx,
-            bool isCacheUserIntent,
-            bool isCacheResolverSolution,
+            bool isCacheEnvelopeTx,
+            bool isCacheIntent,
+            bool isCacheSolution,
             bool isCacheResolverContext
         ) 
     {
@@ -381,9 +381,9 @@ contract UniversalSolver is IUniversalSolver {
         solutionHash = 0;
         sliceInfo = 0;
         intentAccepted = false;
-        _clearCacheData(USER_ENVELOPE_TX_SLOT);
-        _clearCacheData(USER_INTENT_SLOT);
-        _clearCacheData(RESOLVER_SOLUTION_SLOT);
+        _clearCacheData(ENVELOPE_TX_SLOT);
+        _clearCacheData(INTENT_SLOT);
+        _clearCacheData(SOLUTION_SLOT);
         _clearCacheData(USER_CONTEXT_SLOT);
         _clearCacheData(RESOLVER_CONTEXT_SLOT);
     }
@@ -404,30 +404,30 @@ contract UniversalSolver is IUniversalSolver {
         _restoreFreePtr(ptr);
     }
 
-    function _cacheUserEnvelopeTx(
-        bool isCacheUserEnvelopeTx,
+    function _cacheEnvelopeTx(
+        bool isCacheEnvelopeTx,
         bytes calldata envelopeTx
     ) internal {
-        if (isCacheUserEnvelopeTx) {
-            _setCacheCallData(USER_ENVELOPE_TX_SLOT, envelopeTx);
+        if (isCacheEnvelopeTx) {
+            _setCacheCallData(ENVELOPE_TX_SLOT, envelopeTx);
         }
     }
 
-    function _cacheUserIntent(
-        bool isCacheUserIntent,
+    function _cacheIntent(
+        bool isCacheIntent,
         bytes calldata intent
     ) internal {
-        if (isCacheUserIntent) {
-            _setCacheCallData(USER_INTENT_SLOT, intent);
+        if (isCacheIntent) {
+            _setCacheCallData(INTENT_SLOT, intent);
         }
     }
 
-    function _cacheResolverSolution(
-        bool isCacheResolverSolution,
+    function _cacheSolution(
+        bool isCacheSolution,
         bytes calldata solution
     ) internal {
-        if (isCacheResolverSolution) {
-            _setCacheCallData(RESOLVER_SOLUTION_SLOT, solution);
+        if (isCacheSolution) {
+            _setCacheCallData(SOLUTION_SLOT, solution);
         }
     }
 
