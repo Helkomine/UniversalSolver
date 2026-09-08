@@ -86,14 +86,14 @@ contract UniversalSolver is IUniversalSolver {
     error InactiveSolver();
     error LengthTooShort(uint256 length);
     error TotalSlotTooLarge(uint256 totalSlot);
+    error InvalidSender(address sender);
+    error ValidateSenderFailed(bytes result);
+    error ValidateIntentFailed(bytes result);
+    error ResolveFailed(bytes result);
     error CallUserContextFailed(address validator, bytes reason);
     error CallResolverContextFailed(address resolver, bytes reason);
-    error InvalidSender(address sender);
     error IntentAccepted(address validator, bytes intent);
     error InvalidIntent(address validator, bytes intent);
-    error ValidateIntentFailed(bytes result);
-    error UserFailed(bytes result);
-    error ResolveFailed(bytes result);
 
     // Tránh stack too deep
     struct Flags {
@@ -392,7 +392,7 @@ contract UniversalSolver is IUniversalSolver {
     function _validateIntent(address _validator, bytes calldata intent) internal {
         uint256 ptr = _getFreePtr();
         (bool success, bytes memory result) = _validator.call(intent);
-        require(success, UserFailed(result));
+        require(success, ValidateSenderFailed(result));
         emit ValidateIntentPhaseSuccess(_validator, result);
         _restoreFreePtr(ptr);
     }
