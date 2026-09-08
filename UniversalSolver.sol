@@ -86,13 +86,13 @@ contract UniversalSolver is IUniversalSolver {
     error InactiveSolver();
     error LengthTooShort(uint256 length);
     error TotalSlotTooLarge(uint256 totalSlot);
-    error CallRequesterContextFailed(address validator, bytes reason);
+    error CallUserContextFailed(address validator, bytes reason);
     error CallResolverContextFailed(address resolver, bytes reason);
     error InvalidSender(address sender);
     error IntentAccepted(address validator, bytes intent);
     error InvalidIntent(address validator, bytes intent);
     error ValidateIntentFailed(bytes result);
-    error RequesterFailed(bytes result);
+    error UserFailed(bytes result);
     error SolverFailed(bytes result);
 
     // Tránh stack too deep
@@ -357,7 +357,7 @@ contract UniversalSolver is IUniversalSolver {
     function _cacheUserContext(address _validator, bytes calldata intent) internal {
         uint256 ptr = _getFreePtr();
         (bool success, bytes memory userContext) = _validator.staticcall(intent);
-        require(success, CallRequesterContextFailed(_validator, intent));
+        require(success, CallUserContextFailed(_validator, intent));
         _setCacheData(USER_CONTEXT_SLOT, userContext);
         _restoreFreePtr(ptr);
     }
@@ -392,7 +392,7 @@ contract UniversalSolver is IUniversalSolver {
     function _validateIntent(address _validator, bytes calldata intent) internal {
         uint256 ptr = _getFreePtr();
         (bool success, bytes memory result) = _validator.call(intent);
-        require(success, RequesterFailed(result));
+        require(success, UserFailed(result));
         emit ValidateIntentPhaseSuccess(_validator, result);
         _restoreFreePtr(ptr);
     }
