@@ -484,6 +484,7 @@ contract UniversalSolver is IUniversalSolver {
         assembly ("memory-safe") {
             data := mload(64)
             let length := tload(namespace)
+            mstore(data, length)
             if length {
                 let floorTotalSlot := shr(5, length)
                 let totalSlot := shr(5, add(length, 31))
@@ -492,7 +493,6 @@ contract UniversalSolver is IUniversalSolver {
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                mstore(data, length)
                 namespace := add(namespace, 1)
                 let offset := add(data, 32)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
