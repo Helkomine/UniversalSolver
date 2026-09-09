@@ -27,28 +27,24 @@ interface IUniversalSolver {
 
     function senderCallback(bytes calldata validatorAndIntent) external;
 
+    function senderIndex(address sender) external view returns (uint256 index);
+
     function context() external view returns (
         address _initator,
-        bytes32 _intentHash,
-        bytes32 _solutionHash,
-        uint256 _sliceInfo,
         bool _intentAccepted,
-        UserIntent memory userIntent,
-        ResolverSolution memory resolverSolution,
-        bytes memory userContext,
-        bytes memory resolverContext
+        uint256[] memory _sliceInfo,
+        bytes32[] memory _intentHash,
+        UserIntent[] memory userIntent,
+        bytes[] memory userContext
     );
 
     function fullContext() external view returns (
         address _initator,
-        bytes32 _intentHash,
-        bytes32 _solutionHash,
         bool _intentAccepted,
         bool _isSolverActive,
-        UserEnvelopeTx memory userEnvelopeTx,
-        ResolverSolution memory resolverSolution,
-        bytes memory userContext,
-        bytes memory resolverContext
+        bytes32[] memory _intentHash,
+        UserEnvelopeTx[] memory userEnvelopeTx,
+        bytes[] memory userContext
     );
 }
 
@@ -57,7 +53,7 @@ contract UniversalSolver is IUniversalSolver {
     uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 public constant ENVELOPE_TX_SLOT = bytes32(erc7201("envelope.tx.slot"));
     bytes32 public constant INTENT_SLOT = bytes32(erc7201("intent.slot"));
-    bytes32 public constant CONTEXT_SLOT = bytes32(erc7201("context.slot"));
+    bytes32 public constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
 
     address public transient initator;
     address public transient validSenderCallback;
@@ -101,18 +97,37 @@ contract UniversalSolver is IUniversalSolver {
         _;
     }
 
-    function _append(
+    function _getSlot(
+        bytes32 namespace,
+        uint256 index
+    ) internal view returns (bytes32 slot) {
+        assembly ("memory-safe") {
+            length := tload(namespace)
+            switch lt(index, length)
+            case 0 {
+                revert(0, 0)
+            } default {
+                mstore(0, namespace)
+                mstore(32, index)
+                slot := keccak256(0, 64)
+            }
+        }
+    }
+
+    function _appendCallData(
         bytes32 namespace,
         uint256 index,
         bytes calldata data
     ) internal {
-        assembly ("memory-safe") {
-            let length := tload(namespace)
-            switch lt(index, length)
-            case 0 {
-                revert(0, 0)
-            } default {}
-        }
+        _setCacheCallData(_getSlot(namespace, index), data);
+    }
+
+    function _appendData(
+        bytes32 namespace,
+        uint256 index,
+        bytes memory data
+    ) internal {
+        _setCacheData(_getSlot(namespace, index), data);
     }
 
     function _allocate(bytes32 namespace, uint256 length) internal {
@@ -156,7 +171,7 @@ contract UniversalSolver is IUniversalSolver {
     // Đây là hàm nhận callback từ sender
     function senderCallback(bytes calldata validatorAndIntent) external onlySolverActive {
         // Xác minh người gọi có phải là user đã được chỉ định trong UserIntent không..
-        require(msg.sender == sender, InvalidSender(sender));
+        require(msg.sender == validSenderCallback, InvalidSender(validSenderCallback));
         (address _validator, bytes calldata intent) = _decodeValidatorAndIntent(validatorAndIntent);
         // Nếu intent đã được xác thực hàm này sẽ hoàn tác.
         if (intentAccepted) revert IntentAccepted(_validator, intent);
@@ -166,7 +181,7 @@ contract UniversalSolver is IUniversalSolver {
         intentAccepted = true;
     }
 
-    function _setContext(UserEnvelopeTx calldata userEnvelopeTx) internal {
+    function _setContext(uint256 index, UserEnvelopeTx calldata userEnvelopeTx) internal {
         (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
         (
@@ -178,12 +193,12 @@ contract UniversalSolver is IUniversalSolver {
         (
             bool isCacheEnvelopeTx,
             bool isCacheIntent,
-            bool isCacheContext
+            bool isCacheUserContext
         ) = _decodePolicy(_policy);
 
-        _cacheEnvelopeTx(isCacheEnvelopeTx, userEnvelopeTx.envelopeTx);
-        _cacheIntent(isCacheIntent, intent);
-        _cacheContext(isCacheContext, intent);
+        _cacheEnvelopeTx(index, isCacheEnvelopeTx, userEnvelopeTx.envelopeTx);
+        _cacheIntent(index, isCacheIntent, intent);
+        _cacheContext(index, isCacheUserContext, intent);
     }
 
     function context() public view returns (
@@ -193,9 +208,7 @@ contract UniversalSolver is IUniversalSolver {
         uint256 _sliceInfo,
         bool _intentAccepted,
         UserIntent memory userIntent,
-        ResolverSolution memory resolverSolution,
-        bytes memory userContext,
-        bytes memory resolverContext
+        bytes memory userContext
     ) {
         return (
             initator,
@@ -324,11 +337,12 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheEnvelopeTx(
+        uint256 index,
         bool isCacheEnvelopeTx,
         bytes calldata envelopeTx
     ) internal {
         if (isCacheEnvelopeTx) {
-            _setCacheCallData(ENVELOPE_TX_SLOT, envelopeTx);
+            _appendCallData(ENVELOPE_TX_SLOT, index, envelopeTx);
         }
     }
 
