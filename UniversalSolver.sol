@@ -97,20 +97,29 @@ contract UniversalSolver is IUniversalSolver {
         _;
     }
 
+    function _max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a : b;
+    }
+
+    function _allocate(bytes32 namespace, uint256 index) internal {
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(namespace)
+        }
+        length = _max(length + 1, index + 1);
+        assembly ("memory-safe") {
+            tstore(namespace, length)
+        }
+    }
+
     function _getSlot(
         bytes32 namespace,
         uint256 index
-    ) internal view returns (bytes32 slot) {
+    ) internal pure returns (bytes32 slot) {
         assembly ("memory-safe") {
-            length := tload(namespace)
-            switch lt(index, length)
-            case 0 {
-                revert(0, 0)
-            } default {
-                mstore(0, namespace)
-                mstore(32, index)
-                slot := keccak256(0, 64)
-            }
+            mstore(0, namespace)
+            mstore(32, index)
+            slot := keccak256(0, 64)
         }
     }
 
@@ -119,6 +128,7 @@ contract UniversalSolver is IUniversalSolver {
         uint256 index,
         bytes calldata data
     ) internal {
+        _allocate(namespace, index);
         _setCacheCallData(_getSlot(namespace, index), data);
     }
 
@@ -127,13 +137,8 @@ contract UniversalSolver is IUniversalSolver {
         uint256 index,
         bytes memory data
     ) internal {
+        _allocate(namespace, index);
         _setCacheData(_getSlot(namespace, index), data);
-    }
-
-    function _allocate(bytes32 namespace, uint256 length) internal {
-        assembly ("memory-safe") {
-            tstore(namespace, length)
-        }
     }
 
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) public nonReentrant {
@@ -198,7 +203,7 @@ contract UniversalSolver is IUniversalSolver {
 
         _cacheEnvelopeTx(index, isCacheEnvelopeTx, userEnvelopeTx.envelopeTx);
         _cacheIntent(index, isCacheIntent, intent);
-        _cacheContext(index, isCacheUserContext, intent);
+        _cacheUserContext(index, isCacheUserContext, intent);
     }
 
     function context() public view returns (
@@ -347,15 +352,16 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheIntent(
+        uint256 index, 
         bool isCacheIntent,
         bytes calldata intent
     ) internal {
         if (isCacheIntent) {
-            _setCacheCallData(INTENT_SLOT, intent);
+            _appendCallData(INTENT_SLOT, index, intent);
         }
     }
 
-    function _cacheContext(address _validator, bytes calldata intent) internal {
+    function _cacheUserContext(address _validator, bytes calldata intent) internal {
         uint256 ptr = _getFreePtr();
         (bool success, bytes memory userContext) = _validator.staticcall(intent);
         require(success, CallUserContextFailed(_validator, intent));
