@@ -67,6 +67,7 @@ contract UniversalSolver is IUniversalSolver {
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
     error ValidateIntentFailed(bytes result);
+    error ExecuteIntentFailed(bytes result);
     error CallUserContextFailed(address validator, bytes reason);
     error IntentAccepted(address validator, bytes intent);
     error InvalidIntent(address validator, bytes intent);
@@ -236,13 +237,15 @@ contract UniversalSolver is IUniversalSolver {
             _cacheEnvelopeTx(i, isCacheEnvelopeTx, userEnvelopeTx);
             _cacheIntent(i, isCacheIntent, userEnvelopeTx.sender, validator, policy, intent);
             _cacheUserContext(i, isCacheUserContext, validator, intent);
-            _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1), i, uint256(keccak256(intentInfo)));
+            _tstore(
+                bytes32(uint256(INTENT_HASHES_SLOT) + (i + 1)),
+                uint256(keccak256(intentInfo))
+            );
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
         }
         initator = msg.sender;
     }
 
-    function _getUint256Array() internal view returns (uint256[] memory) {}
     function _getBytes32Array() internal view returns (bytes32[] memory) {}
     function _getBytesArray() internal view returns (bytes[] memory) {}
     function _getUserIntentArray() internal view returns (UserIntent[] memory) {}
@@ -286,10 +289,13 @@ contract UniversalSolver is IUniversalSolver {
         _removeBytesArray(ENVELOPE_TX_SLOT);
         _removeBytesArray(INTENT_SLOT);
         _removeBytesArray(USER_CONTEXT_SLOT);
-        _removeUint256Array(INTENT_HASHES_SLOT);
+        _removeBytes32Array(INTENT_HASHES_SLOT);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; ) {
-            _appendUint256(SENDER_INDEX_SLOT, i, 0);
-            _tstore(SENDER_INDEX_SLOT, 0);
+            _setMapAddressToUint256(
+                SENDER_INDEX_SLOT,
+                userEnvelopeTxs[i].sender,
+                0
+            );
             unchecked { ++i; }
         }
     }
@@ -306,7 +312,7 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _removeUint256Array(bytes32 namespace) internal {
+    function _removeBytes32Array(bytes32 namespace) internal {
         assembly ("memory-safe") {
             let length := tload(namespace)
             tstore(namespace, 0)
@@ -395,7 +401,7 @@ contract UniversalSolver is IUniversalSolver {
             );
 
             (bool success, bytes memory result) = validator.call(intent);
-            require(success);
+            require(success, ExecuteIntentFailed(result));
 
             _restoreFreePtr(ptr);
 
