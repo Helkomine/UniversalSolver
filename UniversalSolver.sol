@@ -292,11 +292,8 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _removeUserEnvelopeTxArray() internal {
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(ENVELOPE_TX_SLOT)
-            tstore(ENVELOPE_TX_SLOT, 0)
-        }
+        uint256 length = _tload(ENVELOPE_TX_SLOT);
+        _tstore(ENVELOPE_TX_SLOT, 0);
         for (uint256 i = 0 ; i < length ; ) {
             bytes32 slot = _getBytesSlot(ENVELOPE_TX_SLOT, i);
             _tstore(slot, 0);
