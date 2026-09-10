@@ -184,17 +184,6 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _getUint256(
-        bytes32 namespace,
-        uint256 index
-    ) internal view returns (uint256 value) {
-        assembly ("memory-safe") {
-            namespace := add(namespace, 1)
-            let slot := add(namespace, index)
-            value := tload(slot)
-        }
-    }
-
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
         require(msg.sender == validSenderCallback, InvalidSender(validSenderCallback));
         
@@ -204,9 +193,11 @@ contract UniversalSolver is IUniversalSolver {
         if (validSenderCallback == address(1)) revert IntentAccepted(validator, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
         bytes32 intentHash
-        = bytes32(_getUint256(
-            INTENT_HASHES_SLOT,
-            _getMapAddressToUint256(SENDER_INDEX_SLOT, msg.sender)
+        = bytes32(_tload(
+            bytes32(
+                (uint256(INTENT_HASHES_SLOT) + 1) 
+                + _getMapAddressToUint256(SENDER_INDEX_SLOT, msg.sender)
+            )
         ));
         require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, intent));
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
@@ -300,16 +291,17 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _removeUserEnvelopeTxArray(bytes32 namespace) internal {
+    function _removeUserEnvelopeTxArray() internal {
         uint256 length;
         assembly ("memory-safe") {
-            length := tload(namespace)
-            tstore(namespace, 0)
+            length := tload(ENVELOPE_TX_SLOT)
+            tstore(ENVELOPE_TX_SLOT, 0)
         }
         for (uint256 i = 0 ; i < length ; ) {
-            bytes32 slot = _getBytesSlot(namespace, i);
+            bytes32 slot = _getBytesSlot(ENVELOPE_TX_SLOT, i);
             _tstore(slot, 0);
-            _clearCacheData(_getBytesSlot(namespace, i));
+            _tstore(bytes32(uint256(slot) + 1), 0);
+            _clearCacheData(bytes32(uint256(_getBytesSlot(ENVELOPE_TX_SLOT, i)) + 2));
             unchecked { ++i; }
         }
     }
