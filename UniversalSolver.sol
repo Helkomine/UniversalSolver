@@ -47,7 +47,7 @@ interface IUniversalSolver {
 
 contract UniversalSolver is IUniversalSolver {
     address public constant PRECOMPILE_ADDRESS_RANGE = address(65535);
-    uint128 public constant MAX_TOTAL_SLOT = type(uint64).max;
+    uint64 public constant MAX_TOTAL_SLOT = type(uint64).max;
     uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 public constant ENVELOPE_TX_SLOT = bytes32(erc7201("envelope.tx.slot"));
     bytes32 public constant INTENT_SLOT = bytes32(erc7201("intent.slot"));
@@ -296,6 +296,20 @@ contract UniversalSolver is IUniversalSolver {
                 userEnvelopeTxs[i].sender,
                 0
             );
+            unchecked { ++i; }
+        }
+    }
+
+    function _removeUserEnvelopeTxArray(bytes32 namespace) internal {
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(namespace)
+            tstore(namespace, 0)
+        }
+        for (uint256 i = 0 ; i < length ; ) {
+            bytes32 slot = _getBytesSlot(namespace, i);
+            _tstore(slot, 0);
+            _clearCacheData(_getBytesSlot(namespace, i));
             unchecked { ++i; }
         }
     }
