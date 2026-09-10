@@ -298,7 +298,20 @@ contract UniversalSolver is IUniversalSolver {
             bytes32 slot = _getBytesSlot(ENVELOPE_TX_SLOT, i);
             _tstore(slot, 0);
             _tstore(bytes32(uint256(slot) + 1), 0);
-            _clearCacheData(bytes32(uint256(_getBytesSlot(ENVELOPE_TX_SLOT, i)) + 2));
+            _clearCacheData(bytes32(uint256(slot) + 2));
+            unchecked { ++i; }
+        }
+    }
+
+    function _removeUserIntentArray() internal {
+        uint256 length = _tload(INTENT_SLOT);
+        _tstore(INTENT_SLOT, 0);
+        for (uint256 i = 0 ; i < length ; ) {
+            bytes32 slot = _getBytesSlot(INTENT_SLOT, i);
+            _tstore(slot, 0);
+            _tstore(bytes32(uint256(slot) + 1), 0);
+            _tstore(bytes32(uint256(slot) + 2), 0);
+            _clearCacheData(bytes32(uint256(slot) + 3));
             unchecked { ++i; }
         }
     }
