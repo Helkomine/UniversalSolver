@@ -206,7 +206,7 @@ contract UniversalSolver is IUniversalSolver {
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
         }
         emit ContextPhaseSuccess();
-        _markInitator();
+        _markPhase1Pass();
     }
 
     function _validateSenderPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
@@ -225,7 +225,7 @@ contract UniversalSolver is IUniversalSolver {
             unchecked { ++i; }
         }
         emit ValidateSenderPhaseSuccess();
-        validSenderCallback = address(2);
+        _markPhase2Pass();
     }
 
     function _executeIntentPhase(
@@ -457,9 +457,13 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _markInitator() internal {
+    function _markPhase1Pass() internal {
         require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
         initator = msg.sender;
+    }
+
+    function _markPhase2Pass() internal {
+        validSenderCallback = address(2);
     }
 
     function _tstore(bytes32 key, uint256 value) internal {
