@@ -175,10 +175,8 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
-        require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(USER_INTENT_SLOT, userEnvelopeTxs.length);
-        _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
@@ -208,7 +206,7 @@ contract UniversalSolver is IUniversalSolver {
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
         }
         emit ContextPhaseSuccess();
-        initator = msg.sender;
+        _markInitator();
     }
 
     function _validateSenderPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
@@ -338,6 +336,7 @@ contract UniversalSolver is IUniversalSolver {
             uint256 ptr = _getFreePtr();
             (bool success, bytes memory userContext) = validator.staticcall(intent);
             require(success, CallUserContextFailed(validator, intent));
+            _tstore(USER_CONTEXT_SLOT, userContext.length);
             _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, index), userContext);
             emit CacheUserContext(sender, validator, userContext);
             _restoreFreePtr(ptr);
@@ -459,6 +458,11 @@ contract UniversalSolver is IUniversalSolver {
                 mstore(64, add(offset, shl(5, totalSlot)))
             }
         }
+    }
+
+    function _markInitator() internal {
+        require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
+        initator = msg.sender;
     }
 
     function _tstore(bytes32 key, uint256 value) internal {
