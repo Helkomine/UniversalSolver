@@ -177,6 +177,7 @@ contract UniversalSolver is IUniversalSolver {
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(USER_INTENT_SLOT, userEnvelopeTxs.length);
+        _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
