@@ -3,6 +3,9 @@ pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
 interface IUniversalSolver {
+    event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
+    event CacheUserIntent(UserIntent userIntent);
+    event CacheUserContext(address indexed sender, address indexed validator, bytes userContext);
     event ContextPhaseSuccess();
     event ValidateSenderSuccess(address indexed sender, bytes result);
     event ValidateSenderPhaseSuccess();
@@ -197,7 +200,7 @@ contract UniversalSolver is IUniversalSolver {
 
             _cacheUserEnvelopeTx(i, isCacheUserEnvelopeTx, userEnvelopeTx);
             _cacheUserIntent(i, isCacheUserIntent, userEnvelopeTx.sender, validator, policy, intent);
-            _cacheUserContext(i, isCacheUserContext, validator, intent);
+            _cacheUserContext(i, isCacheUserContext, userEnvelopeTx.sender, validator, intent);
             _tstore(
                 bytes32(uint256(INTENT_HASHES_SLOT) + (i + 1)),
                 uint256(keccak256(intentInfo))
@@ -300,6 +303,7 @@ contract UniversalSolver is IUniversalSolver {
                 _tstore(bytes32(uint256(slot) + 1), userEnvelopeTx.sliceInfo);
             }
             _setCacheCallData(bytes32(uint256(slot) + 2), userEnvelopeTx.envelopeTx);
+            emit CacheUserEnvelopeTx(userEnvelopeTx);
         }
     }
 
@@ -319,12 +323,14 @@ contract UniversalSolver is IUniversalSolver {
                 _tstore(bytes32(uint256(slot) + 2), uint256(policy));
             }
             _setCacheCallData(bytes32(uint256(slot) + 3), intent);
+            emit CacheUserIntent(UserIntent(sender, validator, policy, intent));
         }
     }
 
     function _cacheUserContext(
         uint256 index,
         bool isCacheUserContext,
+        address sender,
         address validator,
         bytes calldata intent
     ) internal {
@@ -333,6 +339,7 @@ contract UniversalSolver is IUniversalSolver {
             (bool success, bytes memory userContext) = validator.staticcall(intent);
             require(success, CallUserContextFailed(validator, intent));
             _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, index), userContext);
+            emit CacheUserContext(sender, validator, userContext);
             _restoreFreePtr(ptr);
         }
     }
