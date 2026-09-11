@@ -432,10 +432,7 @@ contract UniversalSolver is IUniversalSolver {
             let length := tload(namespace)
             mstore(data, length)
             let offset := add(data, 32)
-            switch length 
-            case 0 {
-                mstore(64, offset)
-            } default {
+            if length {
                 let floorTotalSlot := shr(5, length)
                 let totalSlot := shr(5, add(length, 31))
                 if gt(totalSlot, maxTotalSlot) {
@@ -455,8 +452,9 @@ contract UniversalSolver is IUniversalSolver {
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     mstore(add(offset, roundingLength), mask)
                 }
-                mstore(64, add(offset, shl(5, totalSlot)))
+                offset := add(offset, shl(5, totalSlot))
             }
+            mstore(64, offset)
         }
     }
 
