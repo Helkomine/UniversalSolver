@@ -27,10 +27,10 @@ interface IUniversalSolver {
     }
 
     function resolve(
-        UserEnvelopeTx[] calldata userEnvelopeTx
+        UserEnvelopeTx[] calldata userEnvelopeTxs
     ) external;
 
-    function senderCallback(bytes calldata validatorAndIntent) external;
+    function senderCallback(bytes calldata intentInfo) external;
 
     function senderIndex(address sender) external view returns (uint256 index);
 
