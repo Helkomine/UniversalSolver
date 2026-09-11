@@ -240,10 +240,30 @@ contract UniversalSolver is IUniversalSolver {
         initator = msg.sender;
     }
 
-    function _getBytes32Array() internal view returns (bytes32[] memory) {}
-    function _getBytesArray() internal view returns (bytes[] memory) {}
-    function _getUserIntentArray() internal view returns (UserIntent[] memory) {}
-    function _getUserEnvelopeTxArray() internal view returns (UserEnvelopeTx[] memory) {}
+    function _getUserEnvelopeTx(
+        bytes32 namespace,
+        uint256 index
+    ) internal view returns (UserEnvelopeTx memory) {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        return UserEnvelopeTx(
+            address(uint160(_tload(slot))),
+            _tload(bytes32(uint256(slot) + 1)),
+            _getCacheData(bytes32(uint256(slot) + 2))
+        );
+    }
+
+    function _getUserIntent(
+        bytes32 namespace,
+        uint256 index
+    ) internal view returns (UserIntent memory) {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        return UserIntent(
+            address(uint160(_tload(slot))),
+            address(uint160(_tload(bytes32(uint256(slot) + 1)))),
+            bytes32(_tload(bytes32(uint256(slot) + 2))),
+            _getCacheData(bytes32(uint256(slot) + 3))
+        );
+    }
 
     function context() external view returns (
         address _initator,
@@ -251,11 +271,21 @@ contract UniversalSolver is IUniversalSolver {
         UserIntent[] memory userIntent,
         bytes[] memory userContext
     ) {
+        uint256 length = _tload(INTENT_SLOT);
+        intentHash = new bytes32[](length);
+        userIntent = new UserIntent[](length);
+        userContext = new bytes[](length);
+        for (uint256 i = 0 ; i < length ; ) {
+            intentHash[i] = bytes32(_tload(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i)));
+            userIntent[i] = _getUserIntent(INTENT_SLOT, i);
+            userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
+            unchecked { ++i; }
+        }
         return (
             initator,
-            _getBytes32Array(),
-            _getUserIntentArray(),
-            _getBytesArray()
+            intentHash,
+            userIntent,
+            userContext
         );
     }
 
@@ -264,35 +294,42 @@ contract UniversalSolver is IUniversalSolver {
         address _validSenderCallback,
         bool _isSolverActive,
         bytes32[] memory intentHash,
-        UserEnvelopeTx[] memory userEnvelopeTx,
+        UserEnvelopeTx[] memory userEnvelopeTxs,
         bytes[] memory userContext
     ) {
+        uint256 length = _tload(ENVELOPE_TX_SLOT);
+        intentHash = new bytes32[](length);
+        userEnvelopeTxs = new UserEnvelopeTx[](length);
+        userContext = new bytes[](length);
+        for (uint256 i = 0 ; i < length ; ) {
+            intentHash[i] = bytes32(_tload(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i)));
+            userEnvelopeTxs[i] = _getUserEnvelopeTx(ENVELOPE_TX_SLOT, i);
+            userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
+            unchecked { ++i; }
+        }
         return (
             initator,
             validSenderCallback,
             isSolverActive,
-            _getBytes32Array(),
-            _getUserEnvelopeTxArray(),
-            _getBytesArray()
+            intentHash,
+            userEnvelopeTxs,
+            userContext
         );
     }
 
     function _clearContext(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         initator = address(0);
+        validSenderCallback = address(0);
         uint256 length = _tload(ENVELOPE_TX_SLOT);
         _tstore(ENVELOPE_TX_SLOT, 0);
         _tstore(INTENT_SLOT, 0);
         _tstore(USER_CONTEXT_SLOT, 0);
         _tstore(INTENT_HASHES_SLOT, 0);
         for (uint256 i = 0 ; i < length ; ) {
-            unchecked { ++i; }
-        }
-        validSenderCallback = address(0);
-        _removeBytesArray(ENVELOPE_TX_SLOT);
-        _removeBytesArray(INTENT_SLOT);
-        _removeBytesArray(USER_CONTEXT_SLOT);
-        _removeBytes32Array(INTENT_HASHES_SLOT);
-        for (uint256 i = 0 ; i < userEnvelopeTxs.length ; ) {
+            _clearUserEnvelopeTx(ENVELOPE_TX_SLOT, i);
+            _clearUserIntent(INTENT_SLOT, i);
+            _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i), new bytes(0));
+            _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
             _setMapAddressToUint256(
                 SENDER_INDEX_SLOT,
                 userEnvelopeTxs[i].sender,
@@ -303,47 +340,18 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _clearUserEnvelopeTx(bytes32 namespace, uint256 index) internal {
-        uint256 length = _tload(namespace);
         bytes32 slot = _getHashedSlot(namespace, index);
         _tstore(slot, 0);
         _tstore(bytes32(uint256(slot) + 1), 0);
-        _clearCacheData(bytes32(uint256(slot) + 2));
+        _setCacheData(bytes32(uint256(slot) + 2), new bytes(0));
     }
 
-    function _removeUserIntentArray() internal {
-        uint256 length = _tload(INTENT_SLOT);
-        _tstore(INTENT_SLOT, 0);
-        for (uint256 i = 0 ; i < length ; ) {
-            bytes32 slot = _getHashedSlot(INTENT_SLOT, i);
-            _tstore(slot, 0);
-            _tstore(bytes32(uint256(slot) + 1), 0);
-            _tstore(bytes32(uint256(slot) + 2), 0);
-            _clearCacheData(bytes32(uint256(slot) + 3));
-            unchecked { ++i; }
-        }
-    }
-
-    function _removeBytesArray(bytes32 namespace) internal {
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(namespace)
-            tstore(namespace, 0)
-        }
-        for (uint256 i = 0 ; i < length ; ) {
-            _clearCacheData(_getHashedSlot(namespace, i));
-            unchecked { ++i; }
-        }
-    }
-
-    function _removeBytes32Array(bytes32 namespace) internal {
-        assembly ("memory-safe") {
-            let length := tload(namespace)
-            tstore(namespace, 0)
-            namespace := add(namespace, 1)
-            for { let i } lt(i, length) { i := add(i, 1) } {
-                tstore(namespace, 0)
-            }
-        }
+    function _clearUserIntent(bytes32 namespace, uint256 index) internal {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        _tstore(slot, 0);
+        _tstore(bytes32(uint256(slot) + 1), 0);
+        _tstore(bytes32(uint256(slot) + 2), 0);
+        _setCacheData(bytes32(uint256(slot) + 3), new bytes(0));
     }
 
     function _validateSenderPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
@@ -438,7 +446,9 @@ contract UniversalSolver is IUniversalSolver {
         assembly ("memory-safe") {
             let length := data.length
             let totalSlot := shr(5, add(length, 31))
-            let totalCacheSlot := tload(namespace)
+            let totalCacheSlot := shr(5, add(tload(namespace), 31))
+            tstore(namespace, length)
+            namespace := add(namespace, 1)
             if length {
                 let floorTotalSlot := shr(5, length)
                 if gt(totalSlot, maxTotalSlot) {
@@ -446,8 +456,6 @@ contract UniversalSolver is IUniversalSolver {
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                tstore(namespace, length)
-                namespace := add(namespace, 1)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     tstore(add(namespace, i), calldataload(add(data.offset, shl(5, i))))
                 }
@@ -462,7 +470,7 @@ contract UniversalSolver is IUniversalSolver {
             }
             if gt(totalCacheSlot, totalSlot) {
                 let slotLeft := sub(totalCacheSlot, totalSlot)
-                namespace := add(add(namespace, 1), totalSlot)
+                namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
                     tstore(namespace, 0)
                 }
@@ -475,16 +483,17 @@ contract UniversalSolver is IUniversalSolver {
         uint64 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
             let length := mload(data)
+            let totalSlot := shr(5, add(length, 31))
+            let totalCacheSlot := shr(5, add(tload(namespace), 31))
+            tstore(namespace, length)
+            namespace := add(namespace, 1)
             if length {
                 let floorTotalSlot := shr(5, length)
-                let totalSlot := shr(5, add(length, 31))
                 if gt(totalSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                tstore(namespace, length)
-                namespace := add(namespace, 1)
                 let offset := add(data, 32)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     tstore(add(namespace, i), mload(add(offset, shl(5, i))))
@@ -498,25 +507,11 @@ contract UniversalSolver is IUniversalSolver {
                     tstore(add(namespace, floorTotalSlot), mask)
                 }
             }
-        }
-    }
-
-    function _clearCacheData(bytes32 namespace) internal {
-        bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint64 maxTotalSlot = MAX_TOTAL_SLOT;
-        assembly ("memory-safe") {
-            let length := tload(namespace)
-            if length {
-                let totalSlot := shr(5, add(length, 31))
-                if gt(totalSlot, maxTotalSlot) {
-                    mstore(0, errorSelector)
-                    mstore(4, totalSlot)
-                    revert(0, 36)
-                }
-                tstore(namespace, 0)
-                namespace := add(namespace, 1)
-                for { let i } lt(i, totalSlot) { i := add(i, 1) } {
-                    tstore(add(namespace, i), 0)
+            if gt(totalCacheSlot, totalSlot) {
+                let slotLeft := sub(totalCacheSlot, totalSlot)
+                namespace := add(namespace, totalSlot)
+                for { let j } lt(j, slotLeft) { j := add(j, 1) } {
+                    tstore(namespace, 0)
                 }
             }
         }
@@ -561,8 +556,6 @@ contract UniversalSolver is IUniversalSolver {
             }
         }
     }
-
-    //
 
     function _getOffsetAndLength(uint256 _sliceInfo) 
         internal 
