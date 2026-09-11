@@ -137,12 +137,7 @@ contract UniversalSolver is IUniversalSolver {
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
         }
-        return (
-            initator,
-            intentHash,
-            userIntent,
-            userContext
-        );
+        return (initator, intentHash, userIntent, userContext);
     }
 
     function fullContext() external view returns (
@@ -200,7 +195,7 @@ contract UniversalSolver is IUniversalSolver {
             _cacheUserIntent(i, isCacheUserIntent, userEnvelopeTx.sender, validator, policy, intent);
             _cacheUserContext(i, isCacheUserContext, userEnvelopeTx.sender, validator, intent);
             _tstore(
-                bytes32(uint256(INTENT_HASHES_SLOT) + (i + 1)),
+                bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i),
                 uint256(keccak256(intentInfo))
             );
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
