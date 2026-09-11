@@ -66,17 +66,16 @@ contract UniversalSolver is IUniversalSolver {
     bool public transient isSolverActive;
 
     error Reentrancy();
-    error IntentNotAccepted();
     error InactiveSolver();
+    error IntentNotAccepted();
     error LengthTooShort(uint256 length);
     error TotalSlotTooLarge(uint256 totalSlot);
     error InitatorIsPrecompiler(address initator);
-    error SenderIsPrecompiler(address initator);
+    error SenderIsPrecompiler(address sender);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
-    error ValidateIntentFailed(bytes result);
     error ExecuteIntentFailed(bytes result);
-    error CallUserContextFailed(address validator, bytes reason);
+    error UserContextFailed(address validator, bytes reason);
     error IntentAccepted(address validator, bytes32 policy, bytes intent);
     error InvalidIntent(address validator, bytes32 policy, bytes intent);
 
@@ -218,7 +217,7 @@ contract UniversalSolver is IUniversalSolver {
             validSenderCallback = userEnvelopeTx.sender;
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
-            require(success, ValidateIntentFailed(result));
+            require(success, ValidateSenderFailed(result));
             require(validSenderCallback == address(1), IntentNotAccepted());
 
             emit ValidateSenderSuccess(userEnvelopeTx.sender, result);
@@ -336,8 +335,7 @@ contract UniversalSolver is IUniversalSolver {
         if (isCacheUserContext) {
             uint256 ptr = _getFreePtr();
             (bool success, bytes memory userContext) = validator.staticcall(intent);
-            require(success, CallUserContextFailed(validator, intent));
-            _tstore(USER_CONTEXT_SLOT, userContext.length);
+            require(success, UserContextFailed(validator, intent));
             _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, index), userContext);
             emit CacheUserContext(sender, validator, userContext);
             _restoreFreePtr(ptr);
