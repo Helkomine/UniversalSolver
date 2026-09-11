@@ -7,7 +7,8 @@ interface IUniversalSolver {
     event ValidateSenderSuccess(address indexed sender, bytes result);
     event ValidateSenderPhaseSuccess();
     event SenderCallbackSuccess(address indexed sender, bytes result);
-    event ValidateIntentPhaseSuccess(address indexed validator, bytes result);
+    event ValidateIntentSuccess(address indexed validator, bytes result);
+    event ValidateIntentPhaseSuccess();
 
     struct UserIntent {
         address sender;
@@ -242,10 +243,12 @@ contract UniversalSolver is IUniversalSolver {
 
             (bool success, bytes memory result) = validator.call(intent);
             require(success, ExecuteIntentFailed(result));
+            emit ValidateIntentSuccess(validator, result);
 
             _restoreFreePtr(ptr);
             unchecked { ++i; }
         }
+        emit ValidateIntentPhaseSuccess();
     }
 
     function _clearContext(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
