@@ -577,7 +577,7 @@ contract UniversalSolver is IUniversalSolver {
         returns (
             bool isCacheUserEnvelopeTx,
             bool isCacheUserIntent,
-            bool isCacherContext
+            bool isCacheUserContext
         ) 
     {
         return (
