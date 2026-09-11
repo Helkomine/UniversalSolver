@@ -4,7 +4,8 @@ pragma solidity ^0.8.35;
 
 interface IUniversalSolver {
     event ContextPhaseSuccess();
-    event ValidateSenderPhaseSuccess(address indexed sender, bytes result);
+    event ValidateSenderSuccess(address indexed sender, bytes result);
+    event ValidateSenderPhaseSuccess();
     event SenderCallbackSuccess(address indexed sender, bytes result);
     event ValidateIntentPhaseSuccess(address indexed validator, bytes result);
 
@@ -202,6 +203,7 @@ contract UniversalSolver is IUniversalSolver {
             );
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
         }
+        emit ContextPhaseSuccess();
         initator = msg.sender;
     }
 
@@ -216,10 +218,11 @@ contract UniversalSolver is IUniversalSolver {
             require(success, ValidateIntentFailed(result));
             require(validSenderCallback == address(1), IntentNotAccepted());
 
-            emit ValidateSenderPhaseSuccess(userEnvelopeTx.sender, result);
+            emit ValidateSenderSuccess(userEnvelopeTx.sender, result);
             _restoreFreePtr(ptr);
             unchecked { ++i; }
         }
+        emit ValidateSenderPhaseSuccess();
         validSenderCallback = address(2);
     }
 
