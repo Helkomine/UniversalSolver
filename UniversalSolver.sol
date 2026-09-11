@@ -52,14 +52,14 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
-    address public constant PRECOMPILE_ADDRESS_RANGE = address(65535);
-    uint64 public constant MAX_TOTAL_SLOT = type(uint64).max;
-    uint256 public constant SLICE_INFO_MASKING = type(uint128).max;
-    bytes32 public constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
-    bytes32 public constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
-    bytes32 public constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
-    bytes32 public constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
-    bytes32 public constant SENDER_INDEX_SLOT = bytes32(erc7201("sender.index.slot"));
+    address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
+    uint64 constant MAX_TOTAL_SLOT = type(uint64).max;
+    uint256 constant SLICE_INFO_MASKING = type(uint128).max;
+    bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
+    bytes32 constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
+    bytes32 constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
+    bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
+    bytes32 constant SENDER_INDEX_SLOT = bytes32(erc7201("sender.index.slot"));
 
     address public transient initator;
     address public transient validSenderCallback;
