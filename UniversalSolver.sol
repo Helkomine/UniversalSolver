@@ -549,8 +549,8 @@ contract UniversalSolver is IUniversalSolver {
     function _decodeIntentInfo(
         bytes calldata intentInfo
     ) internal pure returns (
-        address _validator,
-        bytes32 _policy,
+        address validator,
+        bytes32 policy,
         bytes calldata intent
     ) {
         return (
@@ -571,7 +571,7 @@ contract UniversalSolver is IUniversalSolver {
         return envelopeTx[offset : offset + length];
     }
 
-    function _decodePolicy(bytes32 _policy) 
+    function _decodePolicy(bytes32 policy) 
         internal 
         pure 
         returns (
@@ -581,9 +581,9 @@ contract UniversalSolver is IUniversalSolver {
         ) 
     {
         return (
-            uint256(_policy >> 255) == 1,
-            (uint256(_policy >> 254) & 1) == 1,
-            (uint256(_policy >> 253) & 1) == 1
+            uint256(policy >> 255) == 1,
+            (uint256(policy >> 254) & 1) == 1,
+            (uint256(policy >> 253) & 1) == 1
         );
     }
 
