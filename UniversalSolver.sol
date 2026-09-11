@@ -339,6 +339,7 @@ contract UniversalSolver is IUniversalSolver {
         assembly ("memory-safe") {
             let length := data.length
             let totalSlot := shr(5, add(length, 31))
+            let totalCacheSlot := shr(5, add(tload(namespace), 31))
             tstore(namespace, length)
             namespace := add(namespace, 1)
             if length {
@@ -348,20 +349,18 @@ contract UniversalSolver is IUniversalSolver {
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                let offset := data.offset
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
-                    tstore(add(namespace, i), calldataload(add(offset, shl(5, i))))
+                    tstore(add(namespace, i), calldataload(add(data.offset, shl(5, i))))
                 }
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
                     let bitPadding := sub(256, shl(3, bytesLeft))
-                    let rawWord := calldataload(add(offset, roundingLength))
+                    let rawWord := calldataload(add(data.offset, roundingLength))
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     tstore(add(namespace, floorTotalSlot), mask)
                 }
             }
-            let totalCacheSlot := shr(5, add(tload(namespace), 31))
             if gt(totalCacheSlot, totalSlot) {
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
@@ -378,6 +377,7 @@ contract UniversalSolver is IUniversalSolver {
         assembly ("memory-safe") {
             let length := mload(data)
             let totalSlot := shr(5, add(length, 31))
+            let totalCacheSlot := shr(5, add(tload(namespace), 31))
             tstore(namespace, length)
             namespace := add(namespace, 1)
             if length {
@@ -400,7 +400,6 @@ contract UniversalSolver is IUniversalSolver {
                     tstore(add(namespace, floorTotalSlot), mask)
                 }
             }
-            let totalCacheSlot := shr(5, add(tload(namespace), 31))
             if gt(totalCacheSlot, totalSlot) {
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
