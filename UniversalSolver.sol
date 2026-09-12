@@ -383,6 +383,12 @@ contract UniversalSolver is IUniversalSolver {
             }
             switch gt(totalCacheSlot, totalSlot)
             case 0 {
+                if gt(length, maxTotalLength) {
+                    mstore(0, slotTooLargeSelector)
+                    mstore(4, length)
+                    revert(0, 36)
+                }
+            } default {
                 if gt(cacheLength, maxTotalLength) {
                     mstore(0, slotTooLargeSelector)
                     mstore(4, cacheLength)
@@ -396,12 +402,6 @@ contract UniversalSolver is IUniversalSolver {
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
                     tstore(add(namespace, j), 0)
-                }
-            } default {
-                if gt(length, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
-                    mstore(4, length)
-                    revert(0, 36)
                 }
             }
         }
@@ -448,6 +448,12 @@ contract UniversalSolver is IUniversalSolver {
             }
             switch gt(totalCacheSlot, totalSlot) 
             case 0 {
+                if gt(length, maxTotalLength) {
+                    mstore(0, slotTooLargeSelector)
+                    mstore(4, length)
+                    revert(0, 36)
+                }
+            } default {
                 if gt(cacheLength, maxTotalLength) {
                     mstore(0, slotTooLargeSelector)
                     mstore(4, maxTotalLength)
@@ -461,12 +467,6 @@ contract UniversalSolver is IUniversalSolver {
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
                     tstore(add(namespace, j), 0)
-                }
-            } default {
-                if gt(length, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
-                    mstore(4, length)
-                    revert(0, 36)
                 }
             }
         }
