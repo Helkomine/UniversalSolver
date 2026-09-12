@@ -337,7 +337,6 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint64 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
-            if eq(namespace, not(0)) { revert(0, 0) }
             let length := data.length
             let totalSlot := shr(5, add(length, 31))
             let totalCacheSlot := shr(5, add(tload(namespace), 31))
@@ -387,7 +386,6 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint64 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
-            if eq(namespace, not(0)) { revert(0, 0) }
             let length := mload(data)
             let totalSlot := shr(5, add(length, 31))
             let totalCacheSlot := shr(5, add(tload(namespace), 31))
@@ -442,7 +440,6 @@ contract UniversalSolver is IUniversalSolver {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
         uint64 maxTotalSlot = MAX_TOTAL_SLOT;
         assembly ("memory-safe") {
-            if eq(namespace, not(0)) { revert(0, 0) }
             data := mload(64)
             let length := tload(namespace)
             mstore(data, length)
@@ -459,7 +456,7 @@ contract UniversalSolver is IUniversalSolver {
                     let _namespace := add(namespace, 1)
                     if gt(namespace, _namespace) { revert(0, 0) }
                     namespace := _namespace
-                    if gt(namespace, add(namespace, totalSlot)) { revert(0, 0) }
+                    if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
                 }
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     mstore(add(offset, shl(5, i)), tload(add(namespace, i)))
