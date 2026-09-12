@@ -377,7 +377,7 @@ contract UniversalSolver is IUniversalSolver {
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
-                    tstore(namespace, 0)
+                    tstore(add(namespace, j), 0)
                 }
             }
         }
@@ -428,7 +428,7 @@ contract UniversalSolver is IUniversalSolver {
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
-                    tstore(namespace, 0)
+                    tstore(add(namespace, j), 0)
                 }
             }
         }
