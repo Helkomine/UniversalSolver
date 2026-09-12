@@ -497,12 +497,12 @@ contract UniversalSolver is IUniversalSolver {
                 {
                     let _namespace := add(namespace, 1)
                     if gt(namespace, _namespace) {
-                        mstore(0, maxTotalLength)
+                        mstore(0, overflowSelector)
                         revert(0, 4)
                     }
                     namespace := _namespace
                     if gt(namespace, lastSlot) {
-                        mstore(0, maxTotalLength)
+                        mstore(0, overflowSelector)
                         revert(0, 4)
                     }
                 }
