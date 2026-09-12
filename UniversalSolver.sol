@@ -53,7 +53,7 @@ interface IUniversalSolver {
 
 contract UniversalSolver is IUniversalSolver {
     address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
-    uint64 constant MAX_TOTAL_SLOT = type(uint64).max;
+    uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
     bytes32 constant USER_INTENT_SLOT = bytes32(erc7201("user.intent.slot"));
@@ -335,48 +335,67 @@ contract UniversalSolver is IUniversalSolver {
 
     function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint64 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
             let length := data.length
             let totalSlot := shr(5, add(length, 31))
-            let totalCacheSlot := shr(5, add(tload(namespace), 31))
+            let cacheLength := tload(namespace)
+            let totalCacheSlot
+            {
+                let _cacheLength := add(cacheLength, 31)
+                if gt(cacheLength, _cacheLength) {
+                    revert(0, 0)
+                }
+                totalCacheSlot := shr(5, _cacheLength)
+            }
             tstore(namespace, length)
             {
                 let _namespace := add(namespace, 1)
-                if gt(namespace, _namespace) { revert(0, 0) }
+                if gt(namespace, _namespace) {
+                    revert(0, 0)
+                }
                 namespace := _namespace
             }
             if length {
-                if gt(totalSlot, maxTotalSlot) {
-                    mstore(0, errorSelector)
-                    mstore(4, totalSlot)
-                    revert(0, 36)
-                }
-                if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
                 let floorTotalSlot := shr(5, length)
+                let lastSlot := add(namespace, floorTotalSlot)
+                if gt(namespace, lastSlot) {
+                    revert(0, 0)
+                }
+                let offset := data.offset
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
-                    tstore(add(namespace, i), calldataload(add(data.offset, shl(5, i))))
+                    tstore(add(namespace, i), calldataload(add(offset, shl(5, i))))
                 }
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitPadding := sub(256, shl(3, bytesLeft))
-                    let rawWord := calldataload(add(data.offset, roundingLength))
+                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, bitsLeft)
+                    let rawWord := calldataload(add(offset, roundingLength))
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
-                    tstore(add(namespace, floorTotalSlot), mask)
+                    tstore(lastSlot, mask)
                 }
             }
-            if gt(totalCacheSlot, totalSlot) {
-                if gt(totalCacheSlot, maxTotalSlot) {
+            switch gt(totalCacheSlot, totalSlot)
+            case 0 {
+                if gt(cacheLength, maxTotalLength) {
                     mstore(0, errorSelector)
-                    mstore(4, totalCacheSlot)
+                    mstore(4, cacheLength)
                     revert(0, 36)
                 }
-                if gt(namespace, add(namespace, totalCacheSlot)) { revert(0, 0) }
+                if gt(namespace, add(namespace, totalCacheSlot)) {
+                    revert(0, 0)
+                }
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
                     tstore(add(namespace, j), 0)
+                }
+            } default {
+                if gt(length, maxTotalLength) {
+                    mstore(0, errorSelector)
+                    mstore(4, length)
+                    revert(0, 36)
                 }
             }
         }
@@ -384,25 +403,26 @@ contract UniversalSolver is IUniversalSolver {
 
     function _setCacheData(bytes32 namespace, bytes memory data) internal {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint64 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
             let length := mload(data)
             let totalSlot := shr(5, add(length, 31))
-            let totalCacheSlot := shr(5, add(tload(namespace), 31))
+            let cacheLength := tload(namespace)
+            let totalCacheSlot := shr(5, add(cacheLength, 31))
             tstore(namespace, length)
             {
                 let _namespace := add(namespace, 1)
-                if gt(namespace, _namespace) { revert(0, 0) }
+                if gt(namespace, _namespace) {
+                    revert(0, 0)
+                }
                 namespace := _namespace
             }
             if length {
-                if gt(totalSlot, maxTotalSlot) {
-                    mstore(0, errorSelector)
-                    mstore(4, totalSlot)
-                    revert(0, 36)
-                }
-                if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
                 let floorTotalSlot := shr(5, length)
+                let lastSlot := add(namespace, floorTotalSlot)
+                if gt(namespace, lastSlot) {
+                    revert(0, 0)
+                }
                 let offset := add(data, 32)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     tstore(add(namespace, i), mload(add(offset, shl(5, i))))
@@ -410,23 +430,33 @@ contract UniversalSolver is IUniversalSolver {
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitPadding := sub(256, shl(3, bytesLeft))
+                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, bitsLeft)
                     let rawWord := mload(add(offset, roundingLength))
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
-                    tstore(add(namespace, floorTotalSlot), mask)
+                    tstore(lastSlot, mask)
                 }
             }
-            if gt(totalCacheSlot, totalSlot) {
-                if gt(totalCacheSlot, maxTotalSlot) {
+            switch gt(totalCacheSlot, totalSlot) 
+            case 0 {
+                if gt(cacheLength, maxTotalLength) {
                     mstore(0, errorSelector)
-                    mstore(4, totalCacheSlot)
+                    mstore(4, maxTotalLength)
                     revert(0, 36)
                 }
-                if gt(namespace, add(namespace, totalCacheSlot)) { revert(0, 0) }
+                if gt(namespace, add(namespace, totalCacheSlot)) {
+                    revert(0, 0)
+                }
                 let slotLeft := sub(totalCacheSlot, totalSlot)
                 namespace := add(namespace, totalSlot)
                 for { let j } lt(j, slotLeft) { j := add(j, 1) } {
                     tstore(add(namespace, j), 0)
+                }
+            } default {
+                if gt(length, maxTotalLength) {
+                    mstore(0, errorSelector)
+                    mstore(4, length)
+                    revert(0, 36)
                 }
             }
         }
@@ -438,7 +468,7 @@ contract UniversalSolver is IUniversalSolver {
         returns (bytes memory data) 
     {
         bytes4 errorSelector = TotalSlotTooLarge.selector;
-        uint64 maxTotalSlot = MAX_TOTAL_SLOT;
+        uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
             data := mload(64)
             let length := tload(namespace)
@@ -447,16 +477,21 @@ contract UniversalSolver is IUniversalSolver {
             if length {
                 let floorTotalSlot := shr(5, length)
                 let totalSlot := shr(5, add(length, 31))
-                if gt(totalSlot, maxTotalSlot) {
+                if gt(length, maxTotalLength) {
                     mstore(0, errorSelector)
-                    mstore(4, totalSlot)
+                    mstore(4, length)
                     revert(0, 36)
                 }
+                let lastSlot := add(namespace, floorTotalSlot)
                 {
                     let _namespace := add(namespace, 1)
-                    if gt(namespace, _namespace) { revert(0, 0) }
+                    if gt(namespace, _namespace) {
+                        revert(0, 0)
+                    }
                     namespace := _namespace
-                    if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
+                    if gt(namespace, lastSlot) {
+                        revert(0, 0)
+                    }
                 }
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     mstore(add(offset, shl(5, i)), tload(add(namespace, i)))
@@ -464,8 +499,9 @@ contract UniversalSolver is IUniversalSolver {
                 let roundingLength := shl(5, floorTotalSlot)
                 let bytesLeft := sub(length, roundingLength)
                 if bytesLeft {
-                    let bitPadding := sub(256, shl(3, bytesLeft))
-                    let rawWord := tload(add(namespace, floorTotalSlot))
+                    let bitsLeft := shl(3, bytesLeft)
+                    let bitPadding := sub(256, bitsLeft)
+                    let rawWord := tload(lastSlot)
                     let mask := shl(bitPadding, shr(bitPadding, rawWord))
                     mstore(add(offset, roundingLength), mask)
                 }
@@ -534,11 +570,13 @@ contract UniversalSolver is IUniversalSolver {
         uint256 index
     ) internal view returns (UserEnvelopeTx memory) {
         bytes32 slot = _getHashedSlot(namespace, index);
-        return UserEnvelopeTx(
-            address(uint160(_tload(slot))),
-            _tload(bytes32(uint256(slot) + 1)),
-            _getCacheData(bytes32(uint256(slot) + 2))
-        );
+        unchecked {
+            return UserEnvelopeTx(
+                address(uint160(_tload(slot))),
+                _tload(bytes32(uint256(slot) + 1)),
+                _getCacheData(bytes32(uint256(slot) + 2))
+            );
+        }
     }
 
     function _getUserIntent(
@@ -546,12 +584,14 @@ contract UniversalSolver is IUniversalSolver {
         uint256 index
     ) internal view returns (UserIntent memory) {
         bytes32 slot = _getHashedSlot(namespace, index);
-        return UserIntent(
-            address(uint160(_tload(slot))),
-            address(uint160(_tload(bytes32(uint256(slot) + 1)))),
-            bytes32(_tload(bytes32(uint256(slot) + 2))),
-            _getCacheData(bytes32(uint256(slot) + 3))
-        );
+        unchecked {
+            return UserIntent(
+                address(uint160(_tload(slot))),
+                address(uint160(_tload(bytes32(uint256(slot) + 1)))),
+                bytes32(_tload(bytes32(uint256(slot) + 2))),
+                _getCacheData(bytes32(uint256(slot) + 3))
+            );
+        }
     }
 
     function _getHashedSlot(
