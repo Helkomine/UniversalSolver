@@ -347,7 +347,6 @@ contract UniversalSolver is IUniversalSolver {
                 namespace := _namespace
             }
             if length {
-                let floorTotalSlot := shr(5, length)
                 if eq(totalSlot, not(0)) { revert(0, 0) }
                 if gt(totalSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
@@ -355,6 +354,7 @@ contract UniversalSolver is IUniversalSolver {
                     revert(0, 36)
                 }
                 if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
+                let floorTotalSlot := shr(5, length)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     tstore(add(namespace, i), calldataload(add(data.offset, shl(5, i))))
                 }
@@ -369,9 +369,9 @@ contract UniversalSolver is IUniversalSolver {
             }
             if gt(totalCacheSlot, totalSlot) {
                 if eq(totalSlot, not(0)) { revert(0, 0) }
-                if gt(totalSlot, maxTotalSlot) {
+                if gt(totalCacheSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
-                    mstore(4, totalSlot)
+                    mstore(4, totalCacheSlot)
                     revert(0, 36)
                 }
                 if gt(namespace, add(namespace, totalCacheSlot)) { revert(0, 0) }
@@ -398,7 +398,6 @@ contract UniversalSolver is IUniversalSolver {
                 namespace := _namespace
             }
             if length {
-                let floorTotalSlot := shr(5, length)
                 if eq(totalSlot, not(0)) { revert(0, 0) }
                 if gt(totalSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
@@ -406,6 +405,7 @@ contract UniversalSolver is IUniversalSolver {
                     revert(0, 36)
                 }
                 if gt(namespace, add(namespace, floorTotalSlot)) { revert(0, 0) }
+                let floorTotalSlot := shr(5, length)
                 let offset := add(data, 32)
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     tstore(add(namespace, i), mload(add(offset, shl(5, i))))
@@ -421,9 +421,9 @@ contract UniversalSolver is IUniversalSolver {
             }
             if gt(totalCacheSlot, totalSlot) {
                 if eq(totalSlot, not(0)) { revert(0, 0) }
-                if gt(totalSlot, maxTotalSlot) {
+                if gt(totalCacheSlot, maxTotalSlot) {
                     mstore(0, errorSelector)
-                    mstore(4, totalSlot)
+                    mstore(4, totalCacheSlot)
                     revert(0, 36)
                 }
                 if gt(namespace, add(namespace, totalCacheSlot)) { revert(0, 0) }
@@ -456,7 +456,12 @@ contract UniversalSolver is IUniversalSolver {
                     mstore(4, totalSlot)
                     revert(0, 36)
                 }
-                namespace := add(namespace, 1)
+                {
+                    let _namespace := add(namespace, 1)
+                    if gt(namespace, _namespace) { revert(0, 0) }
+                    namespace := _namespace
+                    if gt(namespace, add(namespace, totalSlot)) { revert(0, 0) }
+                }
                 for { let i } lt(i, floorTotalSlot) { i := add(i, 1) } {
                     mstore(add(offset, shl(5, i)), tload(add(namespace, i)))
                 }
