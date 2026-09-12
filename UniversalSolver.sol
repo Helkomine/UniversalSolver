@@ -343,7 +343,7 @@ contract UniversalSolver is IUniversalSolver {
             tstore(namespace, length)
             {
                 let _namespace := add(namespace, 1)
-                if gt(namespace, _namespace) { revert,(0, 0) }
+                if gt(namespace, _namespace) { revert(0, 0) }
                 namespace := _namespace
             }
             if length {
@@ -394,7 +394,7 @@ contract UniversalSolver is IUniversalSolver {
             tstore(namespace, length)
             {
                 let _namespace := add(namespace, 1)
-                if gt(namespace, _namespace) { revert,(0, 0) }
+                if gt(namespace, _namespace) { revert(0, 0) }
                 namespace := _namespace
             }
             if length {
