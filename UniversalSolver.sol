@@ -132,7 +132,7 @@ contract UniversalSolver is IUniversalSolver {
         userIntent = new UserIntent[](length);
         userContext = new bytes[](length);
         for (uint256 i = 0 ; i < length ; ) {
-            intentHash[i] = bytes32(_tload(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i)));
+            intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
             userIntent[i] = _getUserIntent(USER_INTENT_SLOT, i);
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
@@ -153,7 +153,7 @@ contract UniversalSolver is IUniversalSolver {
         userEnvelopeTx = new UserEnvelopeTx[](length);
         userContext = new bytes[](length);
         for (uint256 i = 0 ; i < length ; ) {
-            intentHash[i] = bytes32(_tload(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i)));
+            intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
             userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
