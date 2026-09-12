@@ -121,7 +121,7 @@ contract UniversalSolver is IUniversalSolver {
         return _getMapAddressToUint256(SENDER_INDEX_SLOT, sender);
     }
 
-    function context() external view returns (
+    function context() public view returns (
         address _initator,
         bytes32[] memory intentHash,
         UserIntent[] memory userIntent,
@@ -140,7 +140,7 @@ contract UniversalSolver is IUniversalSolver {
         return (initator, intentHash, userIntent, userContext);
     }
 
-    function fullContext() external view returns (
+    function fullContext() public view returns (
         address _initator,
         address _validSenderCallback,
         bool _isSolverActive,
