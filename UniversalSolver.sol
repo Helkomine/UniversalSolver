@@ -63,9 +63,9 @@ contract UniversalSolver is IUniversalSolver {
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
     bytes32 constant SENDER_INDEX_SLOT = bytes32(erc7201("sender.index.slot"));
 
+    bool public transient isSolverActive;
     address public transient initator;
     address public transient validSenderCallback;
-    bool public transient isSolverActive;
 
     error Overflow();
     error Reentrancy();
