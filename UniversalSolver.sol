@@ -72,7 +72,7 @@ contract UniversalSolver is IUniversalSolver {
     error InactiveSolver();
     error IntentNotAccepted();
     error LengthTooShort(uint256 length);
-    error TotalSlotTooLarge(uint256 totalSlot);
+    error TotalLengthTooLarge(uint256 totalLength);
     error InitatorIsPrecompiler(address initator);
     error SenderIsPrecompiler(address sender);
     error InvalidSender(address sender);
@@ -386,7 +386,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
-        bytes4 slotTooLargeSelector = TotalSlotTooLarge.selector;
+        bytes4 lengthTooLargeSelector = TotalLengthTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
         uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
@@ -435,13 +435,13 @@ contract UniversalSolver is IUniversalSolver {
             switch gt(totalCacheSlot, totalSlot)
             case 0 {
                 if gt(length, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
+                    mstore(0, lengthTooLargeSelector)
                     mstore(4, length)
                     revert(0, 36)
                 }
             } default {
                 if gt(cacheLength, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
+                    mstore(0, lengthTooLargeSelector)
                     mstore(4, cacheLength)
                     revert(0, 36)
                 }
@@ -459,7 +459,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setCacheData(bytes32 namespace, bytes memory data) internal {
-        bytes4 slotTooLargeSelector = TotalSlotTooLarge.selector;
+        bytes4 lengthTooLargeSelector = TotalLengthTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
         uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
@@ -500,13 +500,13 @@ contract UniversalSolver is IUniversalSolver {
             switch gt(totalCacheSlot, totalSlot) 
             case 0 {
                 if gt(length, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
+                    mstore(0, lengthTooLargeSelector)
                     mstore(4, length)
                     revert(0, 36)
                 }
             } default {
                 if gt(cacheLength, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
+                    mstore(0, lengthTooLargeSelector)
                     mstore(4, maxTotalLength)
                     revert(0, 36)
                 }
@@ -528,7 +528,7 @@ contract UniversalSolver is IUniversalSolver {
         view 
         returns (bytes memory data) 
     {
-        bytes4 slotTooLargeSelector = TotalSlotTooLarge.selector;
+        bytes4 lengthTooLargeSelector = TotalLengthTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
         uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
@@ -540,7 +540,7 @@ contract UniversalSolver is IUniversalSolver {
                 let floorTotalSlot := shr(5, length)
                 let totalSlot := shr(5, add(length, 31))
                 if gt(length, maxTotalLength) {
-                    mstore(0, slotTooLargeSelector)
+                    mstore(0, lengthTooLargeSelector)
                     mstore(4, length)
                     revert(0, 36)
                 }
