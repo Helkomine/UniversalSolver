@@ -35,16 +35,18 @@ interface IUniversalSolver {
     function senderIndex(address sender) external view returns (uint256 index);
 
     function context() external view returns (
+        bool _isSolverActive,
         address _initator,
+        address _validSenderCallback,
         bytes32[] memory intentHash,
         UserIntent[] memory userIntent,
         bytes[] memory userContext
     );
 
     function fullContext() external view returns (
+        bool _isSolverActive,
         address _initator,
         address _validSenderCallback,
-        bool _isSolverActive,
         bytes32[] memory intentHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
         bytes[] memory userContext
@@ -123,7 +125,9 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function context() public view returns (
+        bool _isSolverActive,
         address _initator,
+        address _validSenderCallback,
         bytes32[] memory intentHash,
         UserIntent[] memory userIntent,
         bytes[] memory userContext
@@ -138,13 +142,13 @@ contract UniversalSolver is IUniversalSolver {
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
         }
-        return (initator, intentHash, userIntent, userContext);
+        return (isSolverActive, initator, validSenderCallback, intentHash, userIntent, userContext);
     }
 
     function fullContext() public view returns (
+        bool _isSolverActive,
         address _initator,
         address _validSenderCallback,
-        bool _isSolverActive,
         bytes32[] memory intentHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
         bytes[] memory userContext
@@ -160,9 +164,9 @@ contract UniversalSolver is IUniversalSolver {
             unchecked { ++i; }
         }
         return (
+            isSolverActive,
             initator,
             validSenderCallback,
-            isSolverActive,
             intentHash,
             userEnvelopeTx,
             userContext
