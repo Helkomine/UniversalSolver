@@ -391,6 +391,11 @@ contract UniversalSolver is IUniversalSolver {
         uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
             let length := data.length
+            if gt(length, maxTotalLength) {
+                mstore(0, lengthTooLargeSelector)
+                mstore(4, length)
+                revert(0, 36)
+            }
             let totalSlot := shr(5, add(length, 31))
             let cacheLength := tload(namespace)
             let totalCacheSlot
@@ -432,14 +437,7 @@ contract UniversalSolver is IUniversalSolver {
                     tstore(lastSlot, mask)
                 }
             }
-            switch gt(totalCacheSlot, totalSlot)
-            case 0 {
-                if gt(length, maxTotalLength) {
-                    mstore(0, lengthTooLargeSelector)
-                    mstore(4, length)
-                    revert(0, 36)
-                }
-            } default {
+            if gt(totalCacheSlot, totalSlot) {
                 if gt(cacheLength, maxTotalLength) {
                     mstore(0, lengthTooLargeSelector)
                     mstore(4, cacheLength)
@@ -464,6 +462,11 @@ contract UniversalSolver is IUniversalSolver {
         uint64 maxTotalLength = MAX_TOTAL_LENGTH;
         assembly ("memory-safe") {
             let length := mload(data)
+            if gt(length, maxTotalLength) {
+                mstore(0, lengthTooLargeSelector)
+                mstore(4, length)
+                revert(0, 36)
+            }
             let totalSlot := shr(5, add(length, 31))
             let cacheLength := tload(namespace)
             let totalCacheSlot := shr(5, add(cacheLength, 31))
@@ -497,14 +500,7 @@ contract UniversalSolver is IUniversalSolver {
                     tstore(lastSlot, mask)
                 }
             }
-            switch gt(totalCacheSlot, totalSlot) 
-            case 0 {
-                if gt(length, maxTotalLength) {
-                    mstore(0, lengthTooLargeSelector)
-                    mstore(4, length)
-                    revert(0, 36)
-                }
-            } default {
+            if gt(totalCacheSlot, totalSlot)  {
                 if gt(cacheLength, maxTotalLength) {
                     mstore(0, lengthTooLargeSelector)
                     mstore(4, maxTotalLength)
@@ -534,16 +530,16 @@ contract UniversalSolver is IUniversalSolver {
         assembly ("memory-safe") {
             data := mload(64)
             let length := tload(namespace)
+            if gt(length, maxTotalLength) {
+                mstore(0, lengthTooLargeSelector)
+                mstore(4, length)
+                revert(0, 36)
+            }
             mstore(data, length)
             let offset := add(data, 32)
             if length {
                 let floorTotalSlot := shr(5, length)
                 let totalSlot := shr(5, add(length, 31))
-                if gt(length, maxTotalLength) {
-                    mstore(0, lengthTooLargeSelector)
-                    mstore(4, length)
-                    revert(0, 36)
-                }
                 let lastSlot := add(namespace, floorTotalSlot)
                 {
                     let _namespace := add(namespace, 1)
