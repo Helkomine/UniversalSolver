@@ -192,9 +192,24 @@ contract UniversalSolver is IUniversalSolver {
             (bool isCacheUserEnvelopeTx, bool isCacheUserIntent, bool isCacheUserContext)
             = _decodePolicy(policy);
 
-            _cacheUserEnvelopeTx(i, isCacheUserEnvelopeTx, userEnvelopeTx);
-            _cacheUserIntent(i, isCacheUserIntent, userEnvelopeTx.sender, validator, policy, intent);
-            _cacheUserContext(i, isCacheUserContext, userEnvelopeTx.sender, validator, intent);
+            _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, isCacheUserEnvelopeTx, userEnvelopeTx);
+            _cacheUserIntent(
+                USER_INTENT_SLOT,
+                i,
+                isCacheUserIntent,
+                userEnvelopeTx.sender,
+                validator,
+                policy,
+                intent
+            );
+            _cacheUserContext(
+                USER_CONTEXT_SLOT,
+                i,
+                isCacheUserContext,
+                userEnvelopeTx.sender,
+                validator,
+                intent
+            );
             _tstore(
                 bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i),
                 uint256(keccak256(intentInfo))
@@ -282,12 +297,13 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserEnvelopeTx(
+        bytes32 namespace,
         uint256 index,
         bool isCacheUserEnvelopeTx,
         UserEnvelopeTx calldata userEnvelopeTx
     ) internal {
         if (isCacheUserEnvelopeTx) {
-            bytes32 slot = _getHashedSlot(USER_ENVELOPE_TX_SLOT, index);
+            bytes32 slot = _getHashedSlot(namespace, index);
             unchecked {
                 _tstore(slot, uint256(uint160(userEnvelopeTx.sender)));
                 _tstore(bytes32(uint256(slot) + 1), userEnvelopeTx.sliceInfo);
@@ -298,6 +314,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserIntent(
+        bytes32 namespace,
         uint256 index, 
         bool isCacheUserIntent,
         address sender,
@@ -306,7 +323,7 @@ contract UniversalSolver is IUniversalSolver {
         bytes calldata intent
     ) internal {
         if (isCacheUserIntent) {
-            bytes32 slot = _getHashedSlot(USER_INTENT_SLOT, index);
+            bytes32 slot = _getHashedSlot(namespace, index);
             unchecked {
                 _tstore(slot, uint256(uint160(sender)));
                 _tstore(bytes32(uint256(slot) + 1), uint256(uint160(validator)));
@@ -318,6 +335,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _cacheUserContext(
+        bytes32 namespace,
         uint256 index,
         bool isCacheUserContext,
         address sender,
@@ -328,7 +346,7 @@ contract UniversalSolver is IUniversalSolver {
             uint256 ptr = _getFreePtr();
             (bool success, bytes memory userContext) = validator.staticcall(intent);
             require(success, UserContextFailed(validator, intent));
-            _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, index), userContext);
+            _setCacheData(_getHashedSlot(namespace, index), userContext);
             emit CacheUserContext(sender, validator, userContext);
             _restoreFreePtr(ptr);
         }
@@ -558,24 +576,14 @@ contract UniversalSolver is IUniversalSolver {
         address key,
         uint256 value
     ) internal {
-        assembly ("memory-safe") {
-            mstore(0, namespace)
-            mstore(32, key)
-            let slot := keccak256(0, 64)
-            tstore(slot, value)
-        }
+        _tstore(_getHashedSlot(namespace, uint256(uint160(key))), value);
     }
 
     function _getMapAddressToUint256(
         bytes32 namespace,
         address key
     ) internal view returns (uint256 value) {
-        assembly ("memory-safe") {
-            mstore(0, namespace)
-            mstore(32, key)
-            let slot := keccak256(0, 64)
-            value := tload(slot)
-        }
+        return _tload(_getHashedSlot(namespace, uint256(uint160(key))));
     }
 
     function _getUserEnvelopeTx(
