@@ -356,6 +356,35 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    function _getUserEnvelopeTx(
+        bytes32 namespace,
+        uint256 index
+    ) internal view returns (UserEnvelopeTx memory) {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        unchecked {
+            return UserEnvelopeTx(
+                address(uint160(_tload(slot))),
+                _tload(bytes32(uint256(slot) + 1)),
+                _getCacheData(bytes32(uint256(slot) + 2))
+            );
+        }
+    }
+
+    function _getUserIntent(
+        bytes32 namespace,
+        uint256 index
+    ) internal view returns (UserIntent memory) {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        unchecked {
+            return UserIntent(
+                address(uint160(_tload(slot))),
+                address(uint160(_tload(bytes32(uint256(slot) + 1)))),
+                bytes32(_tload(bytes32(uint256(slot) + 2))),
+                _getCacheData(bytes32(uint256(slot) + 3))
+            );
+        }
+    }
+
     function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
         bytes4 slotTooLargeSelector = TotalSlotTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
@@ -555,6 +584,21 @@ contract UniversalSolver is IUniversalSolver {
         validSenderCallback = address(2);
     }
 
+    function _setMapAddressToUint256(
+        bytes32 namespace,
+        address key,
+        uint256 value
+    ) internal {
+        _tstore(_getHashedSlot(namespace, uint256(uint160(key))), value);
+    }
+
+    function _getMapAddressToUint256(
+        bytes32 namespace,
+        address key
+    ) internal view returns (uint256 value) {
+        return _tload(_getHashedSlot(namespace, uint256(uint160(key))));
+    }
+
     function _tstore(bytes32 key, uint256 value) internal {
         assembly ("memory-safe") {
             tstore(key, value)
@@ -573,50 +617,6 @@ contract UniversalSolver is IUniversalSolver {
         returns (uint256 offset, uint256 length) 
     {
         return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
-    }
-
-    function _setMapAddressToUint256(
-        bytes32 namespace,
-        address key,
-        uint256 value
-    ) internal {
-        _tstore(_getHashedSlot(namespace, uint256(uint160(key))), value);
-    }
-
-    function _getMapAddressToUint256(
-        bytes32 namespace,
-        address key
-    ) internal view returns (uint256 value) {
-        return _tload(_getHashedSlot(namespace, uint256(uint160(key))));
-    }
-
-    function _getUserEnvelopeTx(
-        bytes32 namespace,
-        uint256 index
-    ) internal view returns (UserEnvelopeTx memory) {
-        bytes32 slot = _getHashedSlot(namespace, index);
-        unchecked {
-            return UserEnvelopeTx(
-                address(uint160(_tload(slot))),
-                _tload(bytes32(uint256(slot) + 1)),
-                _getCacheData(bytes32(uint256(slot) + 2))
-            );
-        }
-    }
-
-    function _getUserIntent(
-        bytes32 namespace,
-        uint256 index
-    ) internal view returns (UserIntent memory) {
-        bytes32 slot = _getHashedSlot(namespace, index);
-        unchecked {
-            return UserIntent(
-                address(uint160(_tload(slot))),
-                address(uint160(_tload(bytes32(uint256(slot) + 1)))),
-                bytes32(_tload(bytes32(uint256(slot) + 2))),
-                _getCacheData(bytes32(uint256(slot) + 3))
-            );
-        }
     }
 
     function _getHashedSlot(
