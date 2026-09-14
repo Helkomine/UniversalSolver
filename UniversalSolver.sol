@@ -246,11 +246,11 @@ contract UniversalSolver is IUniversalSolver {
             for (uint256 i = 0 ; i < length ; i++) {
                 _clearUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i), new bytes(0));
-                if (i < length - 1) {
-                    _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), new bytes(0));
-                }
                 _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
                 _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTxs[i].sender, 0);
+            }
+            for (uint256 i = 0 ; i < length - 1 ; i++) {
+                _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), new bytes(0));
             }
         }
     }
