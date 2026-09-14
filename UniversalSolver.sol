@@ -93,8 +93,7 @@ contract UniversalSolver is IUniversalSolver {
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
         require(msg.sender == validSenderCallback, InvalidSender(validSenderCallback));
         
-        (address validator, bytes calldata intent)
-        = _decodeIntentInfo(intentInfo);
+        (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
         if (validSenderCallback == PHASE1_MARKER) revert IntentAccepted(validator, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
@@ -552,10 +551,7 @@ contract UniversalSolver is IUniversalSolver {
         address validator,
         bytes calldata intent
     ) {
-        return (
-            address(bytes20(intentInfo[0 : 20])),
-            intentInfo[20 : ]
-        );
+        return (address(bytes20(intentInfo[0 : 20])), intentInfo[20 : ]);
     }
 
     function _sliceEnvelopeTx(
