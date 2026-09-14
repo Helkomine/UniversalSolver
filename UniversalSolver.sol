@@ -169,11 +169,9 @@ contract UniversalSolver is IUniversalSolver {
 
             (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
-            bytes calldata intentInfo
-            = _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx);
+            bytes calldata intentInfo = _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx);
 
-            (address validator, bytes calldata intent)
-            = _decodeIntentInfo(intentInfo);
+            (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
             currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
