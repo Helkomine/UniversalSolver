@@ -289,17 +289,21 @@ contract UniversalSolver is IUniversalSolver {
 
     function _clearUserEnvelopeTx(bytes32 namespace, uint256 index) internal {
         bytes32 slot = _getHashedSlot(namespace, index);
-        _tstore(slot, 0);
-        _tstore(bytes32(uint256(slot) + 1), 0);
-        _setCacheData(bytes32(uint256(slot) + 2), new bytes(0));
+        unchecked {
+            _tstore(slot, 0);
+            _tstore(bytes32(uint256(slot) + 1), 0);
+            _setCacheData(bytes32(uint256(slot) + 2), new bytes(0));
+        }
     }
 
     function _clearUserIntent(bytes32 namespace, uint256 index) internal {
         bytes32 slot = _getHashedSlot(namespace, index);
         _tstore(slot, 0);
-        _tstore(bytes32(uint256(slot) + 1), 0);
-        _tstore(bytes32(uint256(slot) + 2), 0);
-        _setCacheData(bytes32(uint256(slot) + 3), new bytes(0));
+        unchecked {
+            _tstore(bytes32(uint256(slot) + 1), 0);
+            _tstore(bytes32(uint256(slot) + 2), 0);
+            _setCacheData(bytes32(uint256(slot) + 3), new bytes(0));
+        }
     }
 
     function _cacheUserEnvelopeTx(
