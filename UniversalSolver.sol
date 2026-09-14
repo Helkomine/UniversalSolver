@@ -109,12 +109,14 @@ contract UniversalSolver is IUniversalSolver {
 
         if (validSenderCallback == address(1)) revert IntentAccepted(validator, policy, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
-        bytes32 intentHash
-        = bytes32(_tload(bytes32(
-            (uint256(INTENT_HASHES_SLOT) + 1)
-            + _getMapAddressToUint256(SENDER_INDEX_SLOT, msg.sender)))
-        );
-        require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, policy, intent));
+        unchecked {
+            bytes32 intentHash
+            = bytes32(_tload(bytes32(
+                (uint256(INTENT_HASHES_SLOT) + 1)
+                + _getMapAddressToUint256(SENDER_INDEX_SLOT, msg.sender)))
+            );
+            require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, policy, intent));
+        }
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         validSenderCallback = address(1);
         emit SenderCallbackSuccess(msg.sender, intent);
@@ -137,7 +139,7 @@ contract UniversalSolver is IUniversalSolver {
         userIntent = new UserIntent[](length);
         userContext = new bytes[](length);
         for (uint256 i = 0 ; i < length ; ) {
-            intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
+            unchecked { intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i))); }
             userIntent[i] = _getUserIntent(USER_INTENT_SLOT, i);
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
@@ -158,7 +160,7 @@ contract UniversalSolver is IUniversalSolver {
         userEnvelopeTx = new UserEnvelopeTx[](length);
         userContext = new bytes[](length);
         for (uint256 i = 0 ; i < length ; ) {
-            intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
+            unchecked { intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i))); }
             userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
             userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             unchecked { ++i; }
@@ -279,7 +281,7 @@ contract UniversalSolver is IUniversalSolver {
             _clearUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
             _clearUserIntent(USER_INTENT_SLOT, i);
             _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i), new bytes(0));
-            _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
+            unchecked { _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0); }
             _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTxs[i].sender, 0);
             unchecked { ++i; }
         }
