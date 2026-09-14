@@ -132,16 +132,16 @@ contract UniversalSolver is IUniversalSolver {
         userEnvelopeTx = new UserEnvelopeTx[](length);
         userContext = new bytes[](length);
         unchecked {
-            if (length > 0) {
-                validatorContext = new bytes[](length - 1);
-            }
             for (uint256 i = 0 ; i < length ; i++) {
                 intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
                 userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
-                if (i < length - 1) {
-                    validatorContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
-                }
+            }
+            if (length > 0) {
+                validatorContext = new bytes[](length - 1);
+            }
+            for (uint256 i = 0 ; i < length - 1 ; i++) {
+                validatorContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
             }
         }
         return (
@@ -209,6 +209,7 @@ contract UniversalSolver is IUniversalSolver {
         UserEnvelopeTx[] calldata userEnvelopeTxs
     ) internal {
         unchecked {
+            _tstore(VALIDATOR_CONTEXT_SLOT, userEnvelopeTxs.length - 1);
             for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
                 uint256 ptr = _getFreePtr();
                 UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
