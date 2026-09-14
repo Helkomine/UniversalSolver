@@ -139,9 +139,9 @@ contract UniversalSolver is IUniversalSolver {
             }
             if (length > 0) {
                 validatorContext = new bytes[](length - 1);
-            }
-            for (uint256 i = 0 ; i < length - 1 ; i++) {
-                validatorContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
+                for (uint256 i = 0 ; i < length - 1 ; i++) {
+                    validatorContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
+                }
             }
         }
         return (
