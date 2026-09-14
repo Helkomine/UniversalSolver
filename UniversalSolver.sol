@@ -55,6 +55,8 @@ interface IUniversalSolver {
 
 contract UniversalSolver is IUniversalSolver {
     address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
+    address constant PHASE1_MARKER = address(1);
+    address constant PHASE2_MARKER = address(2);
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
@@ -107,7 +109,7 @@ contract UniversalSolver is IUniversalSolver {
         (address validator, bytes32 policy, bytes calldata intent)
         = _decodeIntentInfo(intentInfo);
 
-        if (validSenderCallback == address(1)) revert IntentAccepted(validator, policy, intent);
+        if (validSenderCallback == PHASE1_MARKER) revert IntentAccepted(validator, policy, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
         unchecked {
             bytes32 intentHash
@@ -118,7 +120,7 @@ contract UniversalSolver is IUniversalSolver {
             require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, policy, intent));
         }
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
-        validSenderCallback = address(1);
+        validSenderCallback = PHASE1_MARKER;
         emit SenderCallbackSuccess(msg.sender, intent);
     }
 
@@ -235,7 +237,7 @@ contract UniversalSolver is IUniversalSolver {
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
             require(success, ValidateSenderFailed(result));
-            require(validSenderCallback == address(1), IntentNotAccepted());
+            require(validSenderCallback == PHASE1_MARKER, IntentNotAccepted());
 
             emit ValidateSenderSuccess(userEnvelopeTx.sender, result);
             _restoreFreePtr(ptr);
@@ -583,7 +585,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _markPhase2Pass() internal {
-        validSenderCallback = address(2);
+        validSenderCallback = PHASE2_MARKER;
     }
 
     function _setMapAddressToUint256(
