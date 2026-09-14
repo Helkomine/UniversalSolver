@@ -32,6 +32,8 @@ interface IUniversalSolver {
 
     function senderCallback(bytes calldata intentInfo) external;
 
+    function currentIndex() external view returns (uint256 index);
+
     function senderIndex(address sender) external view returns (uint256 index);
 
     function context() external view returns (
@@ -68,6 +70,7 @@ contract UniversalSolver is IUniversalSolver {
     bool public transient isSolverActive;
     address public transient initator;
     address public transient validSenderCallback;
+    uint256 transient currIdx;
 
     error Overflow();
     error Reentrancy();
@@ -122,6 +125,10 @@ contract UniversalSolver is IUniversalSolver {
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         validSenderCallback = PHASE1_MARKER;
         emit SenderCallbackSuccess(msg.sender, intent);
+    }
+    
+    function currentIndex() public view returns (uint256 index) {
+        return currIdx;
     }
 
     function senderIndex(address sender) public view returns (uint256 index) {
@@ -200,6 +207,7 @@ contract UniversalSolver is IUniversalSolver {
             (bool isCacheUserEnvelopeTx, bool isCacheUserIntent, bool isCacheUserContext)
             = _decodePolicy(policy);
 
+            currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, isCacheUserEnvelopeTx, userEnvelopeTx);
             _cacheUserIntent(
                 USER_INTENT_SLOT,
@@ -233,6 +241,7 @@ contract UniversalSolver is IUniversalSolver {
             uint256 ptr = _getFreePtr();
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
 
+            currIdx = i;
             validSenderCallback = userEnvelopeTx.sender;
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
@@ -261,6 +270,7 @@ contract UniversalSolver is IUniversalSolver {
                 _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx)
             );
 
+            currIdx = i;
             (bool success, bytes memory result) = validator.call(intent);
             require(success, ExecuteIntentFailed(result));
             emit ValidateIntentSuccess(validator, result);
@@ -274,6 +284,7 @@ contract UniversalSolver is IUniversalSolver {
     function _clearContext(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         initator = address(0);
         validSenderCallback = address(0);
+        currIdx = 0;
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
         _tstore(USER_ENVELOPE_TX_SLOT, 0);
         _tstore(USER_INTENT_SLOT, 0);
@@ -314,12 +325,10 @@ contract UniversalSolver is IUniversalSolver {
         bool isCacheUserEnvelopeTx,
         UserEnvelopeTx calldata userEnvelopeTx
     ) internal {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        _tstore(slot, uint256(uint160(userEnvelopeTx.sender)));
+        _tstore(bytes32(uint256(slot) + 1), userEnvelopeTx.sliceInfo);
         if (isCacheUserEnvelopeTx) {
-            bytes32 slot = _getHashedSlot(namespace, index);
-            unchecked {
-                _tstore(slot, uint256(uint160(userEnvelopeTx.sender)));
-                _tstore(bytes32(uint256(slot) + 1), userEnvelopeTx.sliceInfo);
-            }
             _setCacheCallData(bytes32(uint256(slot) + 2), userEnvelopeTx.envelopeTx);
             emit CacheUserEnvelopeTx(userEnvelopeTx);
         }
@@ -334,13 +343,11 @@ contract UniversalSolver is IUniversalSolver {
         bytes32 policy,
         bytes calldata intent
     ) internal {
+        bytes32 slot = _getHashedSlot(namespace, index);
+        _tstore(slot, uint256(uint160(sender)));
+        unchecked { _tstore(bytes32(uint256(slot) + 1), uint256(uint160(validator))); }
+        _tstore(bytes32(uint256(slot) + 2), uint256(policy));
         if (isCacheUserIntent) {
-            bytes32 slot = _getHashedSlot(namespace, index);
-            unchecked {
-                _tstore(slot, uint256(uint160(sender)));
-                _tstore(bytes32(uint256(slot) + 1), uint256(uint160(validator)));
-                _tstore(bytes32(uint256(slot) + 2), uint256(policy));
-            }
             _setCacheCallData(bytes32(uint256(slot) + 3), intent);
             emit CacheUserIntent(UserIntent(sender, validator, policy, intent));
         }
