@@ -3,15 +3,6 @@ pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
 interface IUniversalSolver {
-    event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
-    event CacheUserContext(address indexed sender, address indexed validator, bytes userContext);
-    event ContextPhaseSuccess();
-    event ValidateSenderSuccess(address indexed sender, bytes result);
-    event ValidateSenderPhaseSuccess();
-    event SenderCallbackSuccess(address indexed sender, bytes result);
-    event ValidateIntentSuccess(address indexed validator, bytes result);
-    event ValidateIntentPhaseSuccess();
-
     struct UserEnvelopeTx {
         address sender;
         uint256 sliceInfo;
@@ -25,19 +16,18 @@ interface IUniversalSolver {
     function senderCallback(bytes calldata intentInfo) external;
 
     function currentIndex() external view returns (uint256 index);
-
-    function senderIndex(address sender) external view returns (uint256 index);
-
+   
     function context() external view returns (
         bool _isSolverActive,
-        address _initator,
+        address _initiator,
         address _validSenderCallback,
         bytes32[] memory intentHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
-        bytes[] memory userContext,
-        bytes[] memory validatorContext
+        bytes[] memory executorPreContext,
+        bytes[] memory executorPostContext
     );
 }
+
 
 contract UniversalSolver is IUniversalSolver {
     address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
@@ -55,6 +45,15 @@ contract UniversalSolver is IUniversalSolver {
     address public transient initator;
     address public transient validSenderCallback;
     uint256 transient currIdx;
+
+    event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
+    event CacheUserContext(address indexed sender, address indexed validator, bytes userContext);
+    event ContextPhaseSuccess();
+    event ValidateSenderSuccess(address indexed sender, bytes result);
+    event ValidateSenderPhaseSuccess();
+    event SenderCallbackSuccess(address indexed sender, bytes result);
+    event ValidateIntentSuccess(address indexed validator, bytes result);
+    event ValidateIntentPhaseSuccess();
 
     error Overflow();
     error Reentrancy();
@@ -83,7 +82,7 @@ contract UniversalSolver is IUniversalSolver {
         _;
     }
 
-    receive() external {}
+    fallback() external {}
 
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external nonReentrant {
         _setContextPhase(userEnvelopeTxs);
@@ -114,10 +113,6 @@ contract UniversalSolver is IUniversalSolver {
     
     function currentIndex() external view returns (uint256 index) {
         return currIdx;
-    }
-
-    function senderIndex(address sender) external view returns (uint256 index) {
-        return _getMapAddressToUint256(SENDER_INDEX_SLOT, sender);
     }
 
     function context() external view returns (
