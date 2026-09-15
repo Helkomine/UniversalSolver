@@ -83,6 +83,8 @@ contract UniversalSolver is IUniversalSolver {
         _;
     }
 
+    receive() external {}
+
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external nonReentrant {
         _setContextPhase(userEnvelopeTxs);
         _validateSenderPhase(userEnvelopeTxs);
