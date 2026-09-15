@@ -529,12 +529,12 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
-    function _getOffsetAndLength(uint256 _sliceInfo) 
+    function _getOffsetAndLength(uint256 sliceInfo) 
         internal 
         pure 
         returns (uint256 offset, uint256 length) 
     {
-        return (_sliceInfo >> 128, _sliceInfo & SLICE_INFO_MASKING);
+        return (sliceInfo >> 128, sliceInfo & SLICE_INFO_MASKING);
     }
 
     function _getHashedSlot(
