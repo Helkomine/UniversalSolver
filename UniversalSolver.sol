@@ -130,14 +130,7 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
-        return (
-            phase,
-            initator,
-            intentHash,
-            userEnvelopeTx,
-            userContext,
-            validatorContext
-        );
+        return (phase, initator, intentHash, userEnvelopeTx, userContext, validatorContext);
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
