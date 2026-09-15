@@ -14,13 +14,10 @@ interface IUniversalSolver {
     ) external;
 
     function senderCallback(bytes calldata intentInfo) external;
-
-    function currentIndex() external view returns (uint256 index);
    
     function context() external view returns (
-        bool _isSolverActive,
+        uint8 _phase,
         address _initiator,
-        address _validSenderCallback,
         bytes32[] memory intentHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
         bytes[] memory executorPreContext,
@@ -39,11 +36,10 @@ contract UniversalSolver is IUniversalSolver {
     bytes32 constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
     bytes32 constant VALIDATOR_CONTEXT_SLOT = bytes32(erc7201("validator.context.slot"));
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
-    bytes32 constant SENDER_INDEX_SLOT = bytes32(erc7201("sender.index.slot"));
 
-    bool public transient isSolverActive;
+    uint8 public transient phase;
     address public transient initator;
-    address public transient validSenderCallback;
+    address transient validSenderCallback;
     uint256 transient currIdx;
 
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
@@ -71,14 +67,13 @@ contract UniversalSolver is IUniversalSolver {
     error InvalidIntent(address validator, bytes intent);
 
     modifier nonReentrant {
-        if (isSolverActive) revert Reentrancy();
-        isSolverActive = true;
+        if (phase > 0) revert Reentrancy();
         _;
-        isSolverActive = false;
+        phase = 0;
     }
 
     modifier onlySolverActive {
-        require(isSolverActive, InactiveSolver());
+        require(phase > 0, InactiveSolver());
         _;
     }
 
@@ -88,7 +83,7 @@ contract UniversalSolver is IUniversalSolver {
         _setContextPhase(userEnvelopeTxs);
         _validateSenderPhase(userEnvelopeTxs);
         _executeIntentPhase(userEnvelopeTxs);
-        _clearContext(userEnvelopeTxs);
+        _clearContext();
     }
 
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
@@ -101,8 +96,7 @@ contract UniversalSolver is IUniversalSolver {
         unchecked {
             bytes32 intentHash
             = bytes32(_tload(bytes32(
-                (uint256(INTENT_HASHES_SLOT) + 1)
-                + _getMapAddressToUint256(SENDER_INDEX_SLOT, msg.sender)))
+                (uint256(INTENT_HASHES_SLOT) + 1)))
             );
             require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, intent));
         }
@@ -110,15 +104,10 @@ contract UniversalSolver is IUniversalSolver {
         validSenderCallback = PHASE1_MARKER;
         emit SenderCallbackSuccess(msg.sender, intent);
     }
-    
-    function currentIndex() external view returns (uint256 index) {
-        return currIdx;
-    }
 
     function context() external view returns (
-        bool _isSolverActive,
+        uint8 _phase,
         address _initator,
-        address _validSenderCallback,
         bytes32[] memory intentHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
         bytes[] memory userContext,
@@ -142,9 +131,8 @@ contract UniversalSolver is IUniversalSolver {
             }
         }
         return (
-            isSolverActive,
+            phase,
             initator,
-            validSenderCallback,
             intentHash,
             userEnvelopeTx,
             userContext,
@@ -169,14 +157,12 @@ contract UniversalSolver is IUniversalSolver {
 
             (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
-            currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
             _cacheUserContext(USER_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
             _tstore(
                 bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i),
                 uint256(keccak256(intentInfo))
             );
-            _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTx.sender, i);
         }
         emit ContextPhaseSuccess();
         _markPhase1Pass();
@@ -218,7 +204,6 @@ contract UniversalSolver is IUniversalSolver {
                     _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx)
                 );
 
-                currIdx = i;
                 (bool success, bytes memory result) = validator.call(intent);
                 require(success, ExecuteIntentFailed(result));
                 if (i < length - 1) _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), result);
@@ -230,7 +215,7 @@ contract UniversalSolver is IUniversalSolver {
         emit ValidateIntentPhaseSuccess();
     }
 
-    function _clearContext(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
+    function _clearContext() internal {
         initator = address(0);
         validSenderCallback = address(0);
         currIdx = 0;
@@ -244,7 +229,6 @@ contract UniversalSolver is IUniversalSolver {
                 _clearUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i), new bytes(0));
                 _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
-                _setMapAddressToUint256(SENDER_INDEX_SLOT, userEnvelopeTxs[i].sender, 0);
             }
             for (uint256 i = 0 ; i < length - 1 ; i++) {
                 _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), new bytes(0));
@@ -495,21 +479,6 @@ contract UniversalSolver is IUniversalSolver {
 
     function _markPhase2Pass() internal {
         validSenderCallback = PHASE2_MARKER;
-    }
-
-    function _setMapAddressToUint256(
-        bytes32 namespace,
-        address key,
-        uint256 value
-    ) internal {
-        _tstore(_getHashedSlot(namespace, uint256(uint160(key))), value);
-    }
-
-    function _getMapAddressToUint256(
-        bytes32 namespace,
-        address key
-    ) internal view returns (uint256 value) {
-        return _tload(_getHashedSlot(namespace, uint256(uint160(key))));
     }
 
     function _tstore(bytes32 key, uint256 value) internal {
