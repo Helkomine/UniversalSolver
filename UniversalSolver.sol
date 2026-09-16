@@ -15,6 +15,7 @@ interface IUniversalSolver {
    
     function context() external view returns (
         uint8 _phase,
+        uint256 currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
@@ -100,6 +101,7 @@ contract UniversalSolver is IUniversalSolver {
 
     function context() external view returns (
         uint8 _phase,
+        uint256 currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
@@ -120,7 +122,7 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
-        return (phase, initator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
+        return (phase, currIdx, initator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
@@ -140,6 +142,7 @@ contract UniversalSolver is IUniversalSolver {
 
             (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
+            currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
             _cacheUserContext(USER_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
             _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
@@ -184,6 +187,7 @@ contract UniversalSolver is IUniversalSolver {
                     _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx)
                 );
 
+                currIdx = i;
                 (bool success, bytes memory result) = validator.call(intent);
                 require(success, ExecuteIntentFailed(result));
                 if (i < length - 1) _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), result);
