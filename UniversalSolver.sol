@@ -18,7 +18,7 @@ interface IUniversalSolver {
     function context() external view returns (
         uint8 _phase,
         address _initiator,
-        bytes32[] memory intentHash,
+        bytes32[] memory executionHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
         bytes[] memory executorPreContext,
         bytes[] memory executorPostContext
@@ -104,30 +104,30 @@ contract UniversalSolver is IUniversalSolver {
 
     function context() external view returns (
         uint8 _phase,
-        address _initator,
-        bytes32[] memory intentHash,
+        address _initiator,
+        bytes32[] memory executionHash,
         UserEnvelopeTx[] memory userEnvelopeTx,
-        bytes[] memory userContext,
-        bytes[] memory validatorContext
+        bytes[] memory executorPreContext,
+        bytes[] memory executorPostContext
     ) {
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
-        intentHash = new bytes32[](length);
+        executionHash = new bytes32[](length);
         userEnvelopeTx = new UserEnvelopeTx[](length);
-        userContext = new bytes[](length);
+        executorPreContext = new bytes[](length);
         unchecked {
             for (uint256 i = 0 ; i < length ; i++) {
-                intentHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
+                executionHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
                 userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
-                userContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
+                executorPreContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
             }
             if (length > 0) {
-                validatorContext = new bytes[](length - 1);
+                executorPostContext = new bytes[](length - 1);
                 for (uint256 i = 0 ; i < length - 1 ; i++) {
-                    validatorContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
+                    executorPostContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
                 }
             }
         }
-        return (phase, initator, intentHash, userEnvelopeTx, userContext, validatorContext);
+        return (phase, initator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
