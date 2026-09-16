@@ -119,10 +119,7 @@ contract UniversalSolver is IUniversalSolver {
                 executionHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
                 userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 executorPreContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
-            }
-            if (length > 0) {
-                executorPostContext = new bytes[](length - 1);
-                for (uint256 i = 0 ; i < length - 1 ; i++) {
+                if (i < length - 1) {
                     executorPostContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
                 }
             }
