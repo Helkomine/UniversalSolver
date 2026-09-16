@@ -151,10 +151,7 @@ contract UniversalSolver is IUniversalSolver {
 
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
             _cacheUserContext(USER_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
-            _tstore(
-                bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i),
-                uint256(keccak256(intentInfo))
-            );
+            _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
         }
         emit ContextPhaseSuccess();
         _markPhase1Pass();
