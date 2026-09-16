@@ -94,10 +94,7 @@ contract UniversalSolver is IUniversalSolver {
         if (validSenderCallback == CALLBACK_MARKER) revert IntentAccepted(validator, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
         unchecked {
-            bytes32 intentHash
-            = bytes32(_tload(bytes32(
-                (uint256(INTENT_HASHES_SLOT) + 1)))
-            );
+            bytes32 intentHash = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + currIdx)));
             require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, intent));
         }
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
