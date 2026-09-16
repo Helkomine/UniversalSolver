@@ -68,6 +68,7 @@ contract UniversalSolver is IUniversalSolver {
 
     modifier nonReentrant {
         if (phase > 0) revert Reentrancy();
+        phase = 1;
         _;
         phase = 0;
     }
@@ -134,6 +135,8 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
+        require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
+        initator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
@@ -466,12 +469,11 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _markPhase1Pass() internal {
-        require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
-        initator = msg.sender;
+        phase = 2;
     }
 
     function _markPhase2Pass() internal {
-        validSenderCallback = PHASE2_MARKER;
+        phase = 3;
     }
 
     function _tstore(bytes32 key, uint256 value) internal {
