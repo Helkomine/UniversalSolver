@@ -9,9 +9,7 @@ interface IUniversalSolver {
         bytes envelopeTx;
     }
 
-    function resolve(
-        UserEnvelopeTx[] calldata userEnvelopeTxs
-    ) external;
+    function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external;
 
     function senderCallback(bytes calldata intentInfo) external;
    
@@ -24,7 +22,6 @@ interface IUniversalSolver {
         bytes[] memory executorPostContext
     );
 }
-
 
 contract UniversalSolver is IUniversalSolver {
     address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
