@@ -3,6 +3,8 @@ pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
 interface IUniversalSolver {
+    enum Phase {INACTIVE, CONTEXT, VALIDATION, EXECUTION}
+
     struct UserEnvelopeTx {
         address sender;
         uint256 sliceInfo;
@@ -14,7 +16,7 @@ interface IUniversalSolver {
     function senderCallback(bytes calldata intentInfo) external;
    
     function context() external view returns (
-        uint8 _phase,
+        Phase _phase,
         uint256 currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
@@ -33,8 +35,8 @@ contract UniversalSolver is IUniversalSolver {
     bytes32 constant VALIDATOR_CONTEXT_SLOT = bytes32(erc7201("validator.context.slot"));
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
 
-    uint8 public transient phase;
-    address public transient initator;
+    Phase public transient phase;
+    address public transient initiator;
     uint256 public transient currIdx;
     address transient validSenderCallback;
 
@@ -53,7 +55,7 @@ contract UniversalSolver is IUniversalSolver {
     error IntentNotAccepted();
     error LengthTooShort(uint256 length);
     error TotalLengthTooLarge(uint256 totalLength);
-    error InitatorIsMarker(address initator);
+    error initiatorIsMarker(address initiator);
     error SenderIsMarker(address sender);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
@@ -63,14 +65,14 @@ contract UniversalSolver is IUniversalSolver {
     error InvalidIntent(address validator, bytes intent);
 
     modifier nonReentrant {
-        if (phase > 0) revert Reentrancy();
-        phase = 1;
+        if (phase == Phase.INACTIVE) revert Reentrancy();
+        phase = Phase.CONTEXT;
         _;
-        phase = 0;
+        phase = Phase.INACTIVE;
     }
 
     modifier onlySolverActive {
-        require(phase > 0, InactiveSolver());
+        require(phase != Phase.INACTIVE, InactiveSolver());
         _;
     }
 
@@ -100,7 +102,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function context() external view returns (
-        uint8 _phase,
+        Phase _phase,
         uint256 currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
@@ -122,12 +124,12 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
-        return (phase, currIdx, initator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
+        return (phase, currIdx, initiator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
-        require(msg.sender != CALLBACK_MARKER, InitatorIsMarker(msg.sender));
-        initator = msg.sender;
+        require(msg.sender != CALLBACK_MARKER, initiatorIsMarker(msg.sender));
+        initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
@@ -200,7 +202,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _clearContext() internal {
-        initator = address(0);
+        initiator = address(0);
         validSenderCallback = address(0);
         currIdx = 0;
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
@@ -457,11 +459,11 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _markPhase1Pass() internal {
-        phase = 2;
+        phase = Phase.VALIDATION;
     }
 
     function _markPhase2Pass() internal {
-        phase = 3;
+        phase = Phase.EXECUTION;
     }
 
     function _tstore(bytes32 key, uint256 value) internal {
