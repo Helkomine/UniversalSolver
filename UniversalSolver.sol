@@ -24,7 +24,6 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
-    address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
     address constant CALLBACK_MARKER = address(1);
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
@@ -35,8 +34,8 @@ contract UniversalSolver is IUniversalSolver {
 
     uint8 public transient phase;
     address public transient initator;
+    uint256 public transient currIdx;
     address transient validSenderCallback;
-    uint256 transient currIdx;
 
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
     event CacheUserContext(address indexed sender, address indexed validator, bytes userContext);
@@ -53,8 +52,8 @@ contract UniversalSolver is IUniversalSolver {
     error IntentNotAccepted();
     error LengthTooShort(uint256 length);
     error TotalLengthTooLarge(uint256 totalLength);
-    error InitatorIsPrecompiler(address initator);
-    error SenderIsPrecompiler(address sender);
+    error InitatorIsMarker(address initator);
+    error SenderIsMarker(address sender);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
     error ExecuteIntentFailed(bytes result);
@@ -125,7 +124,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
-        require(msg.sender > PRECOMPILE_ADDRESS_RANGE, InitatorIsPrecompiler(msg.sender));
+        require(msg.sender != CALLBACK_MARKER, InitatorIsMarker(msg.sender));
         initator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
@@ -133,9 +132,7 @@ contract UniversalSolver is IUniversalSolver {
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
 
-            require(userEnvelopeTx.sender > PRECOMPILE_ADDRESS_RANGE, 
-                SenderIsPrecompiler(userEnvelopeTx.sender)
-            );
+            require(userEnvelopeTx.sender != CALLBACK_MARKER, SenderIsMarker(userEnvelopeTx.sender));
 
             (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
