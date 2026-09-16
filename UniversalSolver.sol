@@ -28,8 +28,7 @@ interface IUniversalSolver {
 
 contract UniversalSolver is IUniversalSolver {
     address constant PRECOMPILE_ADDRESS_RANGE = address(65535);
-    address constant PHASE1_MARKER = address(1);
-    address constant PHASE2_MARKER = address(2);
+    address constant CALLBACK_MARKER = address(1);
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
@@ -92,7 +91,7 @@ contract UniversalSolver is IUniversalSolver {
         
         (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
-        if (validSenderCallback == PHASE1_MARKER) revert IntentAccepted(validator, intent);
+        if (validSenderCallback == CALLBACK_MARKER) revert IntentAccepted(validator, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
         unchecked {
             bytes32 intentHash
@@ -102,7 +101,7 @@ contract UniversalSolver is IUniversalSolver {
             require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, intent));
         }
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
-        validSenderCallback = PHASE1_MARKER;
+        validSenderCallback = CALLBACK_MARKER;
         emit SenderCallbackSuccess(msg.sender, intent);
     }
 
@@ -174,7 +173,7 @@ contract UniversalSolver is IUniversalSolver {
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
             require(success, ValidateSenderFailed(result));
-            require(validSenderCallback == PHASE1_MARKER, IntentNotAccepted());
+            require(validSenderCallback == CALLBACK_MARKER, IntentNotAccepted());
 
             emit ValidateSenderSuccess(userEnvelopeTx.sender, result);
             _restoreFreePtr(ptr);
