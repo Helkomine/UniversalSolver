@@ -16,11 +16,11 @@ interface IUniversalSolver {
     function senderCallback(bytes calldata intentInfo) external;
    
     function context() external view returns (
-        Phase _phase,
+        Phase phase,
         uint256 currentIndex,
-        address _initiator,
+        address initiator,
         bytes32[] memory executionHash,
-        UserEnvelopeTx[] memory userEnvelopeTx,
+        UserEnvelopeTx[] memory userEnvelopeTxs,
         bytes[] memory executorPreContext,
         bytes[] memory executorPostContext
     );
@@ -31,8 +31,8 @@ contract UniversalSolver is IUniversalSolver {
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
-    bytes32 constant USER_CONTEXT_SLOT = bytes32(erc7201("user.context.slot"));
-    bytes32 constant VALIDATOR_CONTEXT_SLOT = bytes32(erc7201("validator.context.slot"));
+    bytes32 constant PRE_CONTEXT_SLOT = bytes32(erc7201("pre.context.slot"));
+    bytes32 constant POST_CONTEXT_SLOT = bytes32(erc7201("post.context.slot"));
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
 
     Phase public transient phase;
@@ -41,7 +41,7 @@ contract UniversalSolver is IUniversalSolver {
     address transient validSenderCallback;
 
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
-    event CacheUserContext(address indexed sender, address indexed validator, bytes userContext);
+    event CachePreContext(address indexed sender, address indexed validator, bytes userContext);
     event ContextPhaseSuccess();
     event ValidateSenderSuccess(address indexed sender, bytes result);
     event ValidateSenderPhaseSuccess();
@@ -118,9 +118,9 @@ contract UniversalSolver is IUniversalSolver {
             for (uint256 i = 0 ; i < length ; i++) {
                 executionHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
                 userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
-                executorPreContext[i] = _getCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i));
+                executorPreContext[i] = _getCacheData(_getHashedSlot(PRE_CONTEXT_SLOT, i));
                 if (i < length - 1) {
-                    executorPostContext[i] = _getCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i));
+                    executorPostContext[i] = _getCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i));
                 }
             }
         }
@@ -131,7 +131,7 @@ contract UniversalSolver is IUniversalSolver {
         require(msg.sender != CALLBACK_MARKER, initiatorIsMarker(msg.sender));
         initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
-        _tstore(USER_CONTEXT_SLOT, userEnvelopeTxs.length);
+        _tstore(PRE_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
@@ -146,7 +146,7 @@ contract UniversalSolver is IUniversalSolver {
 
             currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
-            _cacheUserContext(USER_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
+            _cacheUserContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
             _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
         }
         emit ContextPhaseSuccess();
@@ -177,7 +177,7 @@ contract UniversalSolver is IUniversalSolver {
         UserEnvelopeTx[] calldata userEnvelopeTxs
     ) internal {
         unchecked {
-            _tstore(VALIDATOR_CONTEXT_SLOT, userEnvelopeTxs.length - 1);
+            _tstore(POST_CONTEXT_SLOT, userEnvelopeTxs.length - 1);
             for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
                 uint256 ptr = _getFreePtr();
                 UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
@@ -192,7 +192,7 @@ contract UniversalSolver is IUniversalSolver {
                 currIdx = i;
                 (bool success, bytes memory result) = validator.call(intent);
                 require(success, ExecuteIntentFailed(result));
-                if (i < length - 1) _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), result);
+                if (i < length - 1) _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), result);
                 emit ValidateIntentSuccess(validator, result);
 
                 _restoreFreePtr(ptr);
@@ -207,17 +207,17 @@ contract UniversalSolver is IUniversalSolver {
         currIdx = 0;
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
         _tstore(USER_ENVELOPE_TX_SLOT, 0);
-        _tstore(USER_CONTEXT_SLOT, 0);
-        _tstore(VALIDATOR_CONTEXT_SLOT, 0);
+        _tstore(PRE_CONTEXT_SLOT, 0);
+        _tstore(POST_CONTEXT_SLOT, 0);
         _tstore(INTENT_HASHES_SLOT, 0);
         unchecked {
             for (uint256 i = 0 ; i < length ; i++) {
                 _clearUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
-                _setCacheData(_getHashedSlot(USER_CONTEXT_SLOT, i), new bytes(0));
+                _setCacheData(_getHashedSlot(PRE_CONTEXT_SLOT, i), new bytes(0));
                 _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
             }
             for (uint256 i = 0 ; i < length - 1 ; i++) {
-                _setCacheData(_getHashedSlot(VALIDATOR_CONTEXT_SLOT, i), new bytes(0));
+                _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), new bytes(0));
             }
         }
     }
@@ -254,7 +254,7 @@ contract UniversalSolver is IUniversalSolver {
         (bool success, bytes memory userContext) = validator.staticcall(intent);
         require(success, UserContextFailed(validator, intent));
         _setCacheData(_getHashedSlot(namespace, index), userContext);
-        emit CacheUserContext(sender, validator, userContext);
+        emit CachePreContext(sender, validator, userContext);
         _restoreFreePtr(ptr);
     }
 
