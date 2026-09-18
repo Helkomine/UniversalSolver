@@ -65,7 +65,7 @@ contract UniversalSolver is IUniversalSolver {
     error InvalidIntent(address executor, bytes intent);
 
     modifier nonReentrant {
-        if (phase == Phase.INACTIVE) revert Reentrancy();
+        require (phase == Phase.INACTIVE, Reentrancy());
         phase = Phase.CONTEXT;
         _;
         phase = Phase.INACTIVE;
