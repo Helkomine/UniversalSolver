@@ -41,12 +41,12 @@ contract UniversalSolver is IUniversalSolver {
     address transient validSenderCallback;
 
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
-    event CachePreContext(address indexed sender, address indexed validator, bytes userContext);
+    event CachePreContext(address indexed sender, address indexed executor, bytes preContext);
     event ContextPhaseSuccess();
     event ValidateSenderSuccess(address indexed sender, bytes result);
     event ValidateSenderPhaseSuccess();
     event SenderCallbackSuccess(address indexed sender, bytes result);
-    event ValidateIntentSuccess(address indexed validator, bytes result);
+    event ValidateIntentSuccess(address indexed executor, bytes result);
     event ValidateIntentPhaseSuccess();
 
     error Overflow();
@@ -55,14 +55,14 @@ contract UniversalSolver is IUniversalSolver {
     error IntentNotAccepted();
     error LengthTooShort(uint256 length);
     error TotalLengthTooLarge(uint256 totalLength);
-    error initiatorIsMarker(address initiator);
+    error InitiatorIsMarker(address initiator);
     error SenderIsMarker(address sender);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
     error ExecuteIntentFailed(bytes result);
-    error UserContextFailed(address validator, bytes reason);
-    error IntentAccepted(address validator, bytes intent);
-    error InvalidIntent(address validator, bytes intent);
+    error PostContextFailed(address executor, bytes reason);
+    error IntentAccepted(address executor, bytes intent);
+    error InvalidIntent(address executor, bytes intent);
 
     modifier nonReentrant {
         if (phase == Phase.INACTIVE) revert Reentrancy();
@@ -88,13 +88,13 @@ contract UniversalSolver is IUniversalSolver {
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
         require(msg.sender == validSenderCallback, InvalidSender(validSenderCallback));
         
-        (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
+        (address executor, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
-        if (validSenderCallback == CALLBACK_MARKER) revert IntentAccepted(validator, intent);
+        if (validSenderCallback == CALLBACK_MARKER) revert IntentAccepted(executor, intent);
         // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
         unchecked {
             bytes32 intentHash = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + currIdx)));
-            require(keccak256(intentInfo) == intentHash, InvalidIntent(validator, intent));
+            require(keccak256(intentInfo) == intentHash, InvalidIntent(executor, intent));
         }
         // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
         validSenderCallback = CALLBACK_MARKER;
@@ -128,7 +128,7 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
-        require(msg.sender != CALLBACK_MARKER, initiatorIsMarker(msg.sender));
+        require(msg.sender != CALLBACK_MARKER, InitiatorIsMarker(msg.sender));
         initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(PRE_CONTEXT_SLOT, userEnvelopeTxs.length);
@@ -142,11 +142,11 @@ contract UniversalSolver is IUniversalSolver {
 
             bytes calldata intentInfo = _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx);
 
-            (address validator, bytes calldata intent) = _decodeIntentInfo(intentInfo);
+            (address executor, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
             currIdx = i;
             _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
-            _cacheUserContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, validator, intent);
+            _cachePreContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, executor, intent);
             _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
         }
         emit ContextPhaseSuccess();
@@ -184,16 +184,16 @@ contract UniversalSolver is IUniversalSolver {
 
                 (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
-                (address validator, bytes calldata intent)
+                (address executor, bytes calldata intent)
                 = _decodeIntentInfo(
                     _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx)
                 );
 
                 currIdx = i;
-                (bool success, bytes memory result) = validator.call(intent);
+                (bool success, bytes memory result) = executor.call(intent);
                 require(success, ExecuteIntentFailed(result));
                 if (i < length - 1) _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), result);
-                emit ValidateIntentSuccess(validator, result);
+                emit ValidateIntentSuccess(executor, result);
 
                 _restoreFreePtr(ptr);
             }
@@ -243,18 +243,18 @@ contract UniversalSolver is IUniversalSolver {
         emit CacheUserEnvelopeTx(userEnvelopeTx);
     }
 
-    function _cacheUserContext(
+    function _cachePreContext(
         bytes32 namespace,
         uint256 index,
         address sender,
-        address validator,
+        address executor,
         bytes calldata intent
     ) internal {
         uint256 ptr = _getFreePtr();
-        (bool success, bytes memory userContext) = validator.staticcall(intent);
-        require(success, UserContextFailed(validator, intent));
-        _setCacheData(_getHashedSlot(namespace, index), userContext);
-        emit CachePreContext(sender, validator, userContext);
+        (bool success, bytes memory PreContext) = executor.staticcall(intent);
+        require(success, PostContextFailed(executor, intent));
+        _setCacheData(_getHashedSlot(namespace, index), PreContext);
+        emit CachePreContext(sender, executor, PreContext);
         _restoreFreePtr(ptr);
     }
 
@@ -500,7 +500,7 @@ contract UniversalSolver is IUniversalSolver {
     function _decodeIntentInfo(
         bytes calldata intentInfo
     ) internal pure returns (
-        address validator,
+        address executor,
         bytes calldata intent
     ) {
         return (address(bytes20(intentInfo[0 : 20])), intentInfo[20 : ]);
