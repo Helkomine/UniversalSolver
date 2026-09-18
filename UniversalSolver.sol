@@ -149,7 +149,6 @@ contract UniversalSolver is IUniversalSolver {
             _cachePreContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, executor, intent);
             _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
         }
-        emit ContextPhaseSuccess();
         _markPhase1Pass();
     }
 
@@ -169,7 +168,6 @@ contract UniversalSolver is IUniversalSolver {
             _restoreFreePtr(ptr);
             unchecked { ++i; }
         }
-        emit ValidateSenderPhaseSuccess();
         _markPhase2Pass();
     }
 
@@ -459,10 +457,12 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function _markPhase1Pass() internal {
+        emit ContextPhaseSuccess();
         phase = Phase.VALIDATION;
     }
 
     function _markPhase2Pass() internal {
+        emit ValidateSenderPhaseSuccess();
         phase = Phase.EXECUTION;
     }
 
