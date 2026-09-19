@@ -157,7 +157,7 @@ contract UniversalSolver is IUniversalSolver {
      * @notice Returns the index of the UserEnvelopeTx currently being
      *         processed.
      */
-    uint256 public transient currIdx;
+    uint256 public transient currentIndex;
 
     /**
      * @dev Sender currently authorized to perform the Solver callback during
@@ -409,7 +409,7 @@ contract UniversalSolver is IUniversalSolver {
 
         if (callbackAccepted) revert CallbackAlreadyAccepted(executor, intent);
         unchecked {
-            bytes32 intentHash = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + currIdx)));
+            bytes32 intentHash = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + currentIndex)));
             require(keccak256(intentInfo) == intentHash, InvalidIntent(executor, intent));
         }
         callbackAccepted = true;
@@ -429,7 +429,7 @@ contract UniversalSolver is IUniversalSolver {
      * operation.
      *
      * @return _phase The current Solver execution phase.
-     * @return currentIndex The index of the UserEnvelopeTx currently being
+     * @return _currentIndex The index of the UserEnvelopeTx currently being
      *         processed.
      * @return _initiator The address that initiated the current `resolve` call.
      * @return executionHash The execution-envelope commitments for the current
@@ -442,7 +442,7 @@ contract UniversalSolver is IUniversalSolver {
      */
     function context() external view returns (
         Phase _phase,
-        uint256 currentIndex,
+        uint256 _currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
         UserEnvelopeTx[] memory userEnvelopeTxs,
@@ -464,7 +464,7 @@ contract UniversalSolver is IUniversalSolver {
                 }
             }
         }
-        return (phase, currIdx, initiator, executionHash, userEnvelopeTxs, executorPreContext, executorPostContext);
+        return (phase, currentIndex, initiator, executionHash, userEnvelopeTxs, executorPreContext, executorPostContext);
     }
 
     /**
@@ -479,7 +479,7 @@ contract UniversalSolver is IUniversalSolver {
      * pre-execution context. Because the calls are static, the Executor and its
      * downstream call tree cannot modify persistent or transient state.
      *
-     * Sets `currIdx` to the currently processed batch item while each Executor
+     * Sets `currentIndex` to the currently processed batch item while each Executor
      * is invoked and advances the Solver to the Validation phase after all
      * pre-context has been collected successfully.
      *
@@ -510,7 +510,7 @@ contract UniversalSolver is IUniversalSolver {
 
             (address executor, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
-            currIdx = i;
+            currentIndex = i;
             _cachePreContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, executor, intent);
             unchecked { ++i; }
         }
@@ -541,7 +541,7 @@ contract UniversalSolver is IUniversalSolver {
             uint256 ptr = _getFreePtr();
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
 
-            currIdx = i;
+            currentIndex = i;
             validSenderCallback = userEnvelopeTx.sender;
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
@@ -590,7 +590,7 @@ contract UniversalSolver is IUniversalSolver {
                     _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx)
                 );
 
-                currIdx = i;
+                currentIndex = i;
                 (bool success, bytes memory result) = executor.call(intent);
                 require(success, ExecuteIntentFailed(result));
                 if (i + 1 < userEnvelopeTxs.length) {
@@ -616,7 +616,7 @@ contract UniversalSolver is IUniversalSolver {
      */
     function _clearContext() internal {
         initiator = address(0);
-        currIdx = 0;
+        currentIndex = 0;
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
         _tstore(USER_ENVELOPE_TX_SLOT, 0);
         _tstore(PRE_CONTEXT_SLOT, 0);
