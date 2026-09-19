@@ -44,8 +44,8 @@ contract UniversalSolver is IUniversalSolver {
     event CachePreContext(address indexed sender, address indexed executor, bytes preContext);
     event ContextPhaseSuccess();
     event ValidateSenderSuccess(address indexed sender, bytes result);
-    event ValidateSenderPhaseSuccess();
     event SenderCallbackSuccess(address indexed sender, bytes result);
+    event ValidateSenderPhaseSuccess();
     event ExecuteIntentSuccess(address indexed executor, bytes result);
     event ExecuteIntentPhaseSuccess();
 
