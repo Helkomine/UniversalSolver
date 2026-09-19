@@ -2,20 +2,86 @@
 pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
-// Đây là giao diện chuẩn theo spec
+/**
+ * @title Universal Solver Interface
+ * @notice Standard interface for coordinating Context, Validation, and
+ *         Execution phases of Solver-compatible intent execution.
+ */
 interface IUniversalSolver {
+    /**
+     * @notice Represents the current execution phase of the Solver.
+     *
+     * `INACTIVE` indicates that the Solver is not processing a batch.
+     * `CONTEXT` indicates that Executors are being called to collect
+     * pre-execution context.
+     * `VALIDATION` indicates that Senders are validating their execution
+     * envelopes and acknowledging the corresponding execution envelope
+     * through `senderCallback`.
+     * `EXECUTION` indicates that Executors are executing the validated
+     * Intents.
+     */
     enum Phase {INACTIVE, CONTEXT, VALIDATION, EXECUTION}
 
+    /**
+     * @notice Represents an envelope transaction submitted for Solver
+     *         execution.
+     *
+     * `sender` identifies the account responsible for validating the
+     * envelope. `sliceInfo` identifies the contiguous portion of
+     * `envelopeTx` containing the execution envelope, encoded as
+     * `Executor || Intent`.
+     */
     struct UserEnvelopeTx {
         address sender;
         uint256 sliceInfo;
         bytes envelopeTx;
     }
 
+    /**
+     * @notice Processes a batch of UserEnvelopeTx objects through the
+     *         Context, Validation, and Execution phases.
+     *
+     * The operation is atomic: any failure during any phase reverts the
+     * entire batch.
+     *
+     * @param userEnvelopeTxs The batch of envelope transactions to process.
+     */
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external;
 
+    /**
+     * @notice Acknowledges the execution envelope currently being validated
+     *         by the Solver.
+     *
+     * The Sender calls this function during the Validation phase to confirm
+     * the exact `Executor || Intent` that the Solver expects for the current
+     * UserEnvelopeTx.
+     *
+     * @param intentInfo The execution envelope consisting of
+     *        `Executor || Intent`.
+     */
     function senderCallback(bytes calldata intentInfo) external;
-   
+
+    /**
+     * @notice Returns the current execution context of the Solver.
+     *
+     * The returned arrays represent distinct categories of execution state
+     * and are not required to have identical lengths. In particular,
+     * `executorPostContext` contains post-execution context only for
+     * executions for which a subsequent batch item exists.
+     *
+     * @return phase The current Solver execution phase.
+     * @return currentIndex The index of the UserEnvelopeTx currently being
+     *         processed.
+     * @return initiator The address that initiated the current `resolve`
+     *         call.
+     * @return executionHash The execution-envelope commitments for the
+     *         current batch.
+     * @return userEnvelopeTxs The UserEnvelopeTx objects in the current batch.
+     * @return executorPreContext The context collected from each Executor
+     *         during the Context phase.
+     * @return executorPostContext The execution results available as
+     *         post-context for preceding batch items.
+     */
     function context() external view returns (
         Phase phase,
         uint256 currentIndex,
@@ -28,28 +94,63 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
-    // Kích thước bytes tối đa có thể xử lý
+    /**
+     * @dev Maximum number of bytes that a cache entry can contain.
+     *
+     * This limit protects the transient-storage cache implementation and is
+     * not part of the Solver protocol semantics.
+     */
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
-    // Masking giá trị sliceInfo để lấy offset và length
+    /**
+     * @dev Mask used to extract the lower 128-bit `length` field from
+     *      `sliceInfo`.
+     */
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
-    // vị trí bắt đầu của lô UserEnvelopeTx
+    /**
+     * @dev Transient-storage namespace used for the current batch of
+     *      UserEnvelopeTx objects.
+     */
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
-    // vị trí bắt đầu của mảng preContext
+    /**
+     * @dev Transient-storage namespace used for Executor pre-context values.
+     */
     bytes32 constant PRE_CONTEXT_SLOT = bytes32(erc7201("pre.context.slot"));
-    // vị trí bắt đầu của mảng postContext
+    /**
+     * @dev Transient-storage namespace used for Executor post-context values.
+     */
     bytes32 constant POST_CONTEXT_SLOT = bytes32(erc7201("post.context.slot"));
-    // vị trí bắt đầu của mảng intentHash
+    /**
+     * @dev Transient-storage namespace used for execution-envelope hashes.
+     */
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
 
-    // getter trả về pha nào Solver đang thực thi
+    /**
+     * @notice Returns the current execution phase of the Solver.
+     *
+     * This value is transaction-scoped and is reset to `INACTIVE` after
+     * `resolve` completes successfully.
+     */
     Phase public transient phase;
-    // getter trả về người khởi tạo giao dịch trên Solver
+    /**
+     * @notice Returns the address that initiated the current `resolve` call.
+     *
+     * The initiator remains unchanged throughout the execution of `resolve`.
+     */
     address public transient initiator;
-    // getter trả về chỉ số thực thi hiện tại ở mỗi pha trên Solver
+    /**
+     * @notice Returns the index of the UserEnvelopeTx currently being
+     *         processed.
+     */
     uint256 public transient currIdx;
-    // biến nội bộ nhằm đánh dấu Sender hợp lệ
+    /**
+     * @dev Sender currently authorized to perform the Solver callback during
+     *      the Validation phase.
+     */
     address transient validSenderCallback;
-    // biến nội bộ nhằm đánh dấu một execution envelope hợp lệ
+    /**
+     * @dev Indicates whether the current Sender has successfully acknowledged
+     *      its expected execution envelope through `senderCallback`.
+     */
     bool transient callbackAccepted;
 
     // emit mỗi khi một UserEnvelopeTx được cache
