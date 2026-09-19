@@ -79,13 +79,20 @@ contract UniversalSolver is IUniversalSolver {
     error IntentNotAccepted();
     // Lỗi khi kích thước bytes quá lớn
     error TotalLengthTooLarge(uint256 totalLength);
+    // Lỗi Sender không hợp lệ
     error InvalidSender(address sender);
+    // Lỗi xác thực Sender trong pha xác minh
     error ValidateSenderFailed(bytes result);
+    // Lỗi thực thi Intent
     error ExecuteIntentFailed(bytes result);
+    // Lỗi thực thi Context tiền thực thi
     error PreContextFailed(address executor, bytes reason);
+    // Lỗi tái nhập Callback
     error CallbackAlreadyAccepted(address executor, bytes intent);
+    // Lỗi khi Sender gửi intent không hợp lệ trong Callback
     error InvalidIntent(address executor, bytes intent);
 
+    // Modifier chống tái nhập
     modifier nonReentrant {
         require (phase == Phase.INACTIVE, Reentrancy());
         phase = Phase.CONTEXT;
@@ -93,11 +100,13 @@ contract UniversalSolver is IUniversalSolver {
         phase = Phase.INACTIVE;
     }
 
+    // Modifier chống truy cập khi Solver chưa hoạt động 
     modifier onlySolverActive {
         require(phase != Phase.INACTIVE, InactiveSolver());
         _;
     }
 
+    // Noop function để hỗ trợ mang blob tiết kiệm gas hơn
     fallback() external {}
 
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external nonReentrant {
