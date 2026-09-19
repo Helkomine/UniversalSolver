@@ -115,7 +115,7 @@ contract UniversalSolver is IUniversalSolver {
                 executionHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
                 userEnvelopeTxs[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 executorPreContext[i] = _getCacheData(_getHashedSlot(PRE_CONTEXT_SLOT, i));
-                if (i < length - 1) {
+                if (i + 1 < length) {
                     executorPostContext[i] = _getCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i));
                 }
             }
@@ -126,9 +126,19 @@ contract UniversalSolver is IUniversalSolver {
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
-        _tstore(PRE_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
+        _tstore(PRE_CONTEXT_SLOT, userEnvelopeTxs.length);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
+            UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
+
+            (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
+
+            bytes calldata intentInfo = _sliceEnvelopeTx(offset, length, userEnvelopeTx.envelopeTx);
+
+            _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
+            _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
+        }
+        for (uint256 i = 0 ; i < userEnvelopeTxs.length ; ) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
 
             (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
@@ -138,9 +148,8 @@ contract UniversalSolver is IUniversalSolver {
             (address executor, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
             currIdx = i;
-            _cacheUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i, userEnvelopeTx);
             _cachePreContext(PRE_CONTEXT_SLOT, i, userEnvelopeTx.sender, executor, intent);
-            _tstore(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i), uint256(keccak256(intentInfo)));
+            unchecked { ++i; }
         }
         _markPhase1Pass();
     }
@@ -209,7 +218,7 @@ contract UniversalSolver is IUniversalSolver {
                 _setCacheData(_getHashedSlot(PRE_CONTEXT_SLOT, i), new bytes(0));
                 _tstore(bytes32(uint256(INTENT_HASHES_SLOT) + 1 + i), 0);
             }
-            for (uint256 i = 0 ; i < length - 1 ; i++) {
+            for (uint256 i = 0 ; i + 1 < length ; i++) {
                 _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), new bytes(0));
             }
         }
