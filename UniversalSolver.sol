@@ -20,7 +20,12 @@ interface IUniversalSolver {
      * `EXECUTION` indicates that Executors are executing the validated
      * Intents.
      */
-    enum Phase {INACTIVE, CONTEXT, VALIDATION, EXECUTION}
+    enum Phase {
+        INACTIVE,
+        CONTEXT,
+        VALIDATION,
+        EXECUTION
+    }
 
     /**
      * @notice Represents an envelope transaction submitted for Solver
@@ -101,28 +106,37 @@ contract UniversalSolver is IUniversalSolver {
      * not part of the Solver protocol semantics.
      */
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
+
     /**
      * @dev Mask used to extract the lower 128-bit `length` field from
      *      `sliceInfo`.
      */
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
+
     /**
      * @dev Transient-storage namespace used for the current batch of
      *      UserEnvelopeTx objects.
      */
-    bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
+    bytes32 constant USER_ENVELOPE_TX_SLOT =
+        bytes32(erc7201("user.envelope.tx.slot"));
+
     /**
      * @dev Transient-storage namespace used for Executor pre-context values.
      */
-    bytes32 constant PRE_CONTEXT_SLOT = bytes32(erc7201("pre.context.slot"));
+    bytes32 constant PRE_CONTEXT_SLOT =
+        bytes32(erc7201("pre.context.slot"));
+
     /**
      * @dev Transient-storage namespace used for Executor post-context values.
      */
-    bytes32 constant POST_CONTEXT_SLOT = bytes32(erc7201("post.context.slot"));
+    bytes32 constant POST_CONTEXT_SLOT =
+        bytes32(erc7201("post.context.slot"));
+
     /**
      * @dev Transient-storage namespace used for execution-envelope hashes.
      */
-    bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
+    bytes32 constant INTENT_HASHES_SLOT =
+        bytes32(erc7201("intent.hashes.slot"));
 
     /**
      * @notice Returns the current execution phase of the Solver.
@@ -131,85 +145,240 @@ contract UniversalSolver is IUniversalSolver {
      * `resolve` completes successfully.
      */
     Phase public transient phase;
+
     /**
      * @notice Returns the address that initiated the current `resolve` call.
      *
      * The initiator remains unchanged throughout the execution of `resolve`.
      */
     address public transient initiator;
+
     /**
      * @notice Returns the index of the UserEnvelopeTx currently being
      *         processed.
      */
     uint256 public transient currIdx;
+
     /**
      * @dev Sender currently authorized to perform the Solver callback during
      *      the Validation phase.
      */
     address transient validSenderCallback;
+
     /**
      * @dev Indicates whether the current Sender has successfully acknowledged
      *      its expected execution envelope through `senderCallback`.
      */
     bool transient callbackAccepted;
 
-    // emit mỗi khi một UserEnvelopeTx được cache
+    /**
+     * @dev Emitted when a UserEnvelopeTx is cached for the current Solver
+     *      execution.
+     *
+     * @param userEnvelopeTx The cached UserEnvelopeTx.
+     */
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
-    // emit mỗi khi một lời gọi Executor với dữ liệu intent thành công trong pha Context
-    event CachePreContext(address indexed sender, address indexed executor, bytes preContext);
-    // emit mỗi khi pha context thành công
+
+    /**
+     * @dev Emitted when an Executor successfully returns pre-execution
+     *      context during the Context phase.
+     *
+     * @param sender The Sender associated with the UserEnvelopeTx.
+     * @param executor The Executor that produced the context.
+     * @param preContext The context returned by the Executor.
+     */
+    event CachePreContext(
+        address indexed sender,
+        address indexed executor,
+        bytes preContext
+    );
+
+    /**
+     * @dev Emitted when the Context phase completes successfully.
+     */
     event ContextPhaseSuccess();
-    // emit mỗi lần thao tác xác thực Sender hợp lệ
-    event ValidateSenderSuccess(address indexed sender, bytes result);
-    // emit mỗi lần thao tác callback Solver của Sender hợp lệ
-    event SenderCallbackSuccess(address indexed sender, bytes result);
-    // emit mỗi khi pha validation thành công
+
+    /**
+     * @dev Emitted when a Sender successfully validates its execution
+     *      envelope.
+     *
+     * @param sender The Sender that validated the envelope.
+     * @param result The return data produced by the Sender.
+     */
+    event ValidateSenderSuccess(
+        address indexed sender,
+        bytes result
+    );
+
+    /**
+     * @dev Emitted when the Validation phase completes successfully.
+     */
     event ValidateSenderPhaseSuccess();
-    // emit mỗi lần thao tác thực thi intent trên Executor hợp lệ
-    event ExecuteIntentSuccess(address indexed executor, bytes result);
-    // emit mỗi khi pha execution thành công
+
+    /**
+     * @dev Emitted when a Sender successfully acknowledges its execution
+     *      envelope through `senderCallback`.
+     *
+     * @param sender The Sender performing the callback.
+     * @param result The callback result data.
+     */
+    event SenderCallbackSuccess(
+        address indexed sender,
+        bytes result
+    );
+
+    /**
+     * @dev Emitted when an Executor successfully executes an Intent.
+     *
+     * @param executor The Executor that executed the Intent.
+     * @param result The return data produced by the Executor.
+     */
+    event ExecuteIntentSuccess(
+        address indexed executor,
+        bytes result
+    );
+
+    /**
+     * @dev Emitted when the Execution phase completes successfully.
+     */
     event ExecuteIntentPhaseSuccess();
 
-    // Lỗi tràn số
+    /**
+     * @dev Reverts when transient-storage slot arithmetic overflows.
+     *
+     * This error protects the cache implementation and is not part of the
+     * Solver protocol semantics.
+     */
     error Overflow();
-    // Lỗi tái nhập
-    error Reentrancy();
-    // Lỗi Solver không hoạt động
-    error InactiveSolver();
-    // Lỗi khi một intent chưa có dấu chứng thực của Solver trong khi callback
-    error IntentNotAccepted();
-    // Lỗi khi kích thước bytes quá lớn
-    error TotalLengthTooLarge(uint256 totalLength);
-    // Lỗi Sender không hợp lệ
-    error InvalidSender(address sender);
-    // Lỗi xác thực Sender trong pha xác minh
-    error ValidateSenderFailed(bytes result);
-    // Lỗi thực thi Intent
-    error ExecuteIntentFailed(bytes result);
-    // Lỗi thực thi Context tiền thực thi
-    error PreContextFailed(address executor, bytes reason);
-    // Lỗi tái nhập Callback
-    error CallbackAlreadyAccepted(address executor, bytes intent);
-    // Lỗi khi Sender gửi intent không hợp lệ trong Callback
-    error InvalidIntent(address executor, bytes intent);
 
-    // Modifier chống tái nhập
+    /**
+     * @dev Reverts when `resolve` is called while the Solver is already
+     *      processing another execution.
+     */
+    error Reentrancy();
+
+    /**
+     * @dev Reverts when a function requiring an active Solver execution is
+     *      called while the Solver is inactive.
+     */
+    error InactiveSolver();
+
+    /**
+     * @dev Reverts when the current Sender completes validation without
+     *      successfully acknowledging its execution envelope through
+     *      `senderCallback`.
+     */
+    error IntentNotAccepted();
+
+    /**
+     * @dev Reverts when a cached `bytes` value exceeds
+     *      `MAX_TOTAL_LENGTH`.
+     *
+     * @param totalLength The length that exceeded the implementation limit.
+     */
+    error TotalLengthTooLarge(uint256 totalLength);
+
+    /**
+     * @dev Reverts when a callback is made by an address other than the
+     *      Sender currently being validated.
+     *
+     * @param sender The address that attempted the callback.
+     */
+    error InvalidSender(address sender);
+
+    /**
+     * @dev Reverts when a Sender execution envelope fails during the
+     *      Validation phase.
+     *
+     * @param result The revert data returned by the Sender.
+     */
+    error ValidateSenderFailed(bytes result);
+
+    /**
+     * @dev Reverts when an Executor fails during the Execution phase.
+     *
+     * @param result The revert data returned by the Executor.
+     */
+    error ExecuteIntentFailed(bytes result);
+
+    /**
+     * @dev Reverts when an Executor fails to provide pre-execution context
+     *      during the Context phase.
+     *
+     * @param executor The Executor that failed.
+     * @param reason The revert data returned by the Executor.
+     */
+    error PreContextFailed(
+        address executor,
+        bytes reason
+    );
+
+    /**
+     * @dev Reverts when the current Sender attempts to acknowledge more than
+     *      one execution envelope during its validation.
+     *
+     * @param executor The Executor encoded in the attempted callback.
+     * @param intent The Intent encoded in the attempted callback.
+     */
+    error CallbackAlreadyAccepted(
+        address executor,
+        bytes intent
+    );
+
+    /**
+     * @dev Reverts when the execution envelope supplied to `senderCallback`
+     *      does not match the execution-envelope commitment for the current
+     *      UserEnvelopeTx.
+     *
+     * @param executor The Executor encoded in the attempted callback.
+     * @param intent The Intent encoded in the attempted callback.
+     */
+    error InvalidIntent(
+        address executor,
+        bytes intent
+    );
+
+    /**
+     * @dev Prevents a new Solver execution from starting while another
+     *      execution is active.
+     *
+     * Sets the Solver phase to `CONTEXT` before executing the modified
+     * function body and restores it to `INACTIVE` after successful
+     * completion.
+     */
     modifier nonReentrant {
-        require (phase == Phase.INACTIVE, Reentrancy());
+        require(phase == Phase.INACTIVE, Reentrancy());
         phase = Phase.CONTEXT;
         _;
         phase = Phase.INACTIVE;
     }
 
-    // Modifier chống truy cập khi Solver chưa hoạt động 
+    /**
+     * @dev Restricts execution to an active Solver session.
+     */
     modifier onlySolverActive {
         require(phase != Phase.INACTIVE, InactiveSolver());
         _;
     }
 
-    // Noop function để hỗ trợ mang blob tiết kiệm gas hơn
+    /**
+     * @dev No-op fallback used to allow the Solver to act as a technical
+     *      Sender or Executor for blob-only UserEnvelopeTx objects.
+     *
+     * This fallback intentionally performs no state-changing operation.
+     */
     fallback() external {}
 
+    /**
+     * @notice Processes a batch of UserEnvelopeTx objects through the Context,
+     *         Validation, and Execution phases.
+      *
+     * The operation is atomic: any failure during any phase reverts the entire
+     * batch. The initiator is recorded as the caller of this function and remains
+     * unchanged throughout the execution.
+     *
+     * @param userEnvelopeTxs The batch of envelope transactions to process.
+     */
     function resolve(UserEnvelopeTx[] calldata userEnvelopeTxs) external nonReentrant {
         _setContextPhase(userEnvelopeTxs);
         _validateSenderPhase(userEnvelopeTxs);
@@ -217,6 +386,22 @@ contract UniversalSolver is IUniversalSolver {
         _clearContext();
     }
 
+    /**
+     * @notice Acknowledges the execution envelope currently being validated by
+     *         the Solver.
+     *
+     * The Sender calls this function during the Validation phase to confirm the
+     * exact `Executor || Intent` associated with the current UserEnvelopeTx.
+     *
+     * The callback is accepted only when it is made by the Sender currently being
+     * validated and its execution envelope matches the commitment cached for the
+     * current batch item.
+     *
+     * A Sender may successfully acknowledge at most one execution envelope during
+     * its validation.
+     *
+     * @param intentInfo The execution envelope consisting of `Executor || Intent`.
+     */
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
         require(msg.sender == validSenderCallback, InvalidSender(msg.sender));
         
@@ -231,6 +416,30 @@ contract UniversalSolver is IUniversalSolver {
         emit SenderCallbackSuccess(msg.sender, intent);
     }
 
+    /**
+     * @notice Returns the current execution context of the Solver.
+     *
+     * The returned arrays represent distinct categories of execution state and
+     * are not required to have identical lengths. In particular,
+     * `executorPostContext` contains post-execution context for each batch item
+     * that has a subsequent item.
+     *
+     * When the Solver is inactive, the returned context represents the current
+     * transient state, which is normally empty after a successful `resolve`
+     * operation.
+     *
+     * @return _phase The current Solver execution phase.
+     * @return currentIndex The index of the UserEnvelopeTx currently being
+     *         processed.
+     * @return _initiator The address that initiated the current `resolve` call.
+     * @return executionHash The execution-envelope commitments for the current
+     *         batch.
+     * @return userEnvelopeTxs The UserEnvelopeTx objects in the current batch.
+     * @return executorPreContext The pre-execution context returned by each
+     *         Executor during the Context phase.
+     * @return executorPostContext The post-execution context returned by each
+     *         Executor for preceding batch items during the Execution phase.
+     */
     function context() external view returns (
         Phase _phase,
         uint256 currentIndex,
@@ -258,6 +467,25 @@ contract UniversalSolver is IUniversalSolver {
         return (phase, currIdx, initiator, executionHash, userEnvelopeTxs, executorPreContext, executorPostContext);
     }
 
+    /**
+     * @dev Initializes the execution context for the Context phase.
+     *
+     * Records the `resolve` initiator, caches the UserEnvelopeTx batch, and stores
+     * an execution-envelope hash for each batch item. The cached hash is later
+     * used by `senderCallback` to verify that the Sender acknowledges the exact
+     * `Executor || Intent` associated with the current UserEnvelopeTx.
+     *
+     * The function then invokes each Executor using `STATICCALL` to collect its
+     * pre-execution context. Because the calls are static, the Executor and its
+     * downstream call tree cannot modify persistent or transient state.
+     *
+     * Sets `currIdx` to the currently processed batch item while each Executor
+     * is invoked and advances the Solver to the Validation phase after all
+     * pre-context has been collected successfully.
+     *
+     * @param userEnvelopeTxs The batch of envelope transactions to initialize
+     *        for Solver execution.
+     */
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
@@ -289,6 +517,25 @@ contract UniversalSolver is IUniversalSolver {
         _markPhase1Pass();
     }
 
+    /**
+     * @dev Validates each Sender and verifies that it acknowledges its expected
+     *      execution envelope.
+     *
+     * For each UserEnvelopeTx, the Solver calls the Sender with its complete
+     * `envelopeTx`. The Sender MUST successfully return and MUST invoke
+     * `senderCallback` with the exact `Executor || Intent` associated with the
+     * current UserEnvelopeTx.
+     *
+     * The callback acceptance flag is reset after each successfully validated
+     * Sender. The callback target is cleared after the entire Validation phase
+     * completes.
+     *
+     * Reverts if a Sender call fails or if the Sender completes without
+     * successfully acknowledging its execution envelope.
+     *
+     * @param userEnvelopeTxs The batch of envelope transactions whose Senders are
+     *        validated.
+     */
     function _validateSenderPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; ) {
             uint256 ptr = _getFreePtr();
@@ -310,6 +557,23 @@ contract UniversalSolver is IUniversalSolver {
         _markPhase2Pass();
     }
 
+    /**
+     * @dev Executes each validated Intent through its corresponding Executor.
+     *
+     * The execution envelope is decoded again from the original `envelopeTx`,
+     * ensuring that the Executor and Intent executed here are derived from the
+     * same envelope that was validated during the Validation phase.
+     *
+     * The Executor is called with the decoded Intent. When a subsequent batch
+     * item exists, the returned data is stored as post-execution context for that
+     * item and can be accessed through `context()`.
+     *
+     * Reverts if any Executor call fails. Because `resolve` is atomic, such a
+     * failure reverts the entire Solver execution.
+     *
+     * @param userEnvelopeTxs The batch of envelope transactions whose validated
+     *        Intents are to be executed.
+     */
     function _executeIntentPhase(
         UserEnvelopeTx[] calldata userEnvelopeTxs
     ) internal {
@@ -339,6 +603,17 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Clears transient execution context remaining after a Solver session.
+     *
+     * Resets the initiator and current batch index and clears the cached batch,
+     * execution-envelope hashes, pre-execution context, and post-execution
+     * context.
+     *
+     * This function is an implementation-level cleanup operation. The transient
+     * storage layout and cleanup strategy are not part of the Solver protocol
+     * semantics.
+     */
     function _clearContext() internal {
         initiator = address(0);
         currIdx = 0;
@@ -359,6 +634,16 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Clears a cached UserEnvelopeTx from transient storage.
+     *
+     * Removes the cached Sender, slice information, and envelope transaction
+     * associated with the specified namespace and index.
+     *
+     * @param namespace The transient storage namespace containing the cached
+     *        UserEnvelopeTx.
+     * @param index The index of the UserEnvelopeTx within the namespace.
+     */
     function _clearUserEnvelopeTx(bytes32 namespace, uint256 index) internal {
         bytes32 slot = _getHashedSlot(namespace, index);
         unchecked {
@@ -368,6 +653,21 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Caches a UserEnvelopeTx in transient storage.
+     *
+     * Stores the Sender address, packed slice information, and complete envelope
+     * transaction under the specified namespace and index.
+     *
+     * The transient-storage representation is an implementation detail and is
+     * used to make the complete UserEnvelopeTx batch available through the
+     * Solver execution context.
+     *
+     * @param namespace The transient storage namespace used for the cached
+     *        UserEnvelopeTx.
+     * @param index The index of the UserEnvelopeTx within the namespace.
+     * @param userEnvelopeTx The UserEnvelopeTx to cache.
+     */
     function _cacheUserEnvelopeTx(
         bytes32 namespace,
         uint256 index,
@@ -380,6 +680,26 @@ contract UniversalSolver is IUniversalSolver {
         emit CacheUserEnvelopeTx(userEnvelopeTx);
     }
 
+    /**
+     * @dev Collects and caches pre-execution context from an Executor.
+     *
+     * Calls the Executor using `STATICCALL` with the Intent as calldata. The
+     * Executor and its downstream call tree therefore cannot modify state during
+     * this phase.
+     *
+     * The returned data is cached as pre-execution context and can subsequently
+     * be accessed through `context()` during Validation and Execution.
+     *
+     * Reverts with `PreContextFailed` if the Executor call fails.
+     *
+     * @param namespace The transient storage namespace used for pre-execution
+     *        context.
+     * @param index The index of the corresponding UserEnvelopeTx.
+     * @param sender The Sender associated with the UserEnvelopeTx. Used for
+     *        context events.
+     * @param executor The Executor from the execution envelope.
+     * @param intent The Intent passed to the Executor.
+     */
     function _cachePreContext(
         bytes32 namespace,
         uint256 index,
@@ -395,6 +715,7 @@ contract UniversalSolver is IUniversalSolver {
         _restoreFreePtr(ptr);
     }
 
+    // Hàm trả về đối tượng có kiểu UserEnvelopeTx
     function _getUserEnvelopeTx(
         bytes32 namespace,
         uint256 index
