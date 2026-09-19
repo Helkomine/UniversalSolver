@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 /// @author Helkomine (@Helkomine)
 
+// Đây là giao diện chuẩn theo spec
 interface IUniversalSolver {
     enum Phase {INACTIVE, CONTEXT, VALIDATION, EXECUTION}
 
@@ -27,32 +28,56 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
+    // Kích thước bytes tối đa có thể xử lý
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
+    // Masking giá trị sliceInfo để lấy offset và length
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
+    // vị trí bắt đầu của lô UserEnvelopeTx
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
+    // vị trí bắt đầu của mảng preContext
     bytes32 constant PRE_CONTEXT_SLOT = bytes32(erc7201("pre.context.slot"));
+    // vị trí bắt đầu của mảng postContext
     bytes32 constant POST_CONTEXT_SLOT = bytes32(erc7201("post.context.slot"));
+    // vị trí bắt đầu của mảng intentHash
     bytes32 constant INTENT_HASHES_SLOT = bytes32(erc7201("intent.hashes.slot"));
 
+    // getter trả về pha nào Solver đang thực thi
     Phase public transient phase;
+    // getter trả về người khởi tạo giao dịch trên Solver
     address public transient initiator;
+    // getter trả về chỉ số thực thi hiện tại ở mỗi pha trên Solver
     uint256 public transient currIdx;
+    // biến nội bộ nhằm đánh dấu Sender hợp lệ
     address transient validSenderCallback;
+    // biến nội bộ nhằm đánh dấu một execution envelope hợp lệ
     bool transient callbackAccepted;
 
+    // emit mỗi khi một UserEnvelopeTx được cache
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
+    // emit mỗi khi một lời gọi Executor với dữ liệu intent thành công trong pha Context
     event CachePreContext(address indexed sender, address indexed executor, bytes preContext);
+    // emit mỗi khi pha context thành công
     event ContextPhaseSuccess();
+    // emit mỗi lần thao tác xác thực Sender hợp lệ
     event ValidateSenderSuccess(address indexed sender, bytes result);
+    // emit mỗi lần thao tác callback Solver của Sender hợp lệ
     event SenderCallbackSuccess(address indexed sender, bytes result);
+    // emit mỗi khi pha validation thành công
     event ValidateSenderPhaseSuccess();
+    // emit mỗi lần thao tác thực thi intent trên Executor hợp lệ
     event ExecuteIntentSuccess(address indexed executor, bytes result);
+    // emit mỗi khi pha execution thành công
     event ExecuteIntentPhaseSuccess();
 
+    // Lỗi tràn số
     error Overflow();
+    // Lỗi tái nhập
     error Reentrancy();
+    // Lỗi Solver không hoạt động
     error InactiveSolver();
+    // Lỗi khi một intent chưa có dấu chứng thực của Solver trong khi callback
     error IntentNotAccepted();
+    // Lỗi khi kích thước bytes quá lớn
     error TotalLengthTooLarge(uint256 totalLength);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
@@ -274,6 +299,24 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Copies a `bytes` value from calldata into transient storage.
+     *
+     * The value is stored as a length word followed by its data words. If the
+     * length is not a multiple of 32 bytes, the unused bytes in the final word
+     * are zeroed to produce a canonical representation.
+     *
+     * If the new value is shorter than the previously cached value at the same
+     * namespace, trailing transient storage slots are cleared to prevent stale
+     * data from remaining in the cache.
+     *
+     * Reverts with `TotalLengthTooLarge` if the value or previous cached value
+     * exceeds `MAX_TOTAL_LENGTH`, or with `Overflow` if the transient storage
+     * slot arithmetic overflows.
+     *
+     * @param namespace The transient storage namespace used to cache the value.
+     * @param data The calldata bytes to cache.
+     */
     function _setCacheCallData(bytes32 namespace, bytes calldata data) internal {
         bytes4 lengthTooLargeSelector = TotalLengthTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
@@ -345,6 +388,24 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Copies a `bytes` value from memory into transient storage.
+     *
+     * The value is stored as a length word followed by its data words. If the
+     * length is not a multiple of 32 bytes, the unused bytes in the final word
+     * are zeroed to produce a canonical representation.
+     *
+     * If the new value is shorter than the previously cached value at the same
+     * namespace, trailing transient storage slots are cleared to prevent stale
+     * data from remaining in the cache.
+     *
+     * Reverts with `TotalLengthTooLarge` if the value or previous cached value
+     * exceeds `MAX_TOTAL_LENGTH`, or with `Overflow` if the transient storage
+     * slot arithmetic overflows.
+     *
+     * @param namespace The transient storage namespace used to cache the value.
+     * @param data The memory bytes to cache.
+     */
     function _setCacheData(bytes32 namespace, bytes memory data) internal {
         bytes4 lengthTooLargeSelector = TotalLengthTooLarge.selector;
         bytes4 overflowSelector = Overflow.selector;
@@ -408,6 +469,21 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Loads a cached `bytes` value from transient storage into memory.
+     *
+     * The value is expected to be stored as a length word followed by its data
+     * words. If the length is not a multiple of 32 bytes, only the bytes within
+     * the logical length are copied into memory; unused bytes in the final word
+     * are ignored.
+     *
+     * Reverts with `TotalLengthTooLarge` if the cached length exceeds
+     * `MAX_TOTAL_LENGTH`, or with `Overflow` if the transient storage slot
+     * arithmetic overflows.
+     *
+     * @param namespace The transient storage namespace containing the cached value.
+     * @return data The cached bytes value reconstructed in memory.
+     */
     function _getCacheData(bytes32 namespace) 
         internal 
         view 
@@ -470,18 +546,46 @@ contract UniversalSolver is IUniversalSolver {
         phase = Phase.EXECUTION;
     }
 
+    /**
+     * @dev Stores a value in transient storage at `key`.
+     *
+     * This helper provides a high-level Solidity-callable wrapper around the
+     * `TSTORE` instruction.
+     *
+     * @param key The transient storage key.
+     * @param value The value to store.
+     */
     function _tstore(bytes32 key, uint256 value) internal {
         assembly ("memory-safe") {
             tstore(key, value)
         }
     }
 
+    /**
+     * @dev Loads a value from transient storage at `key`.
+     *
+     * This helper provides a high-level Solidity-callable wrapper around the
+     * `TLOAD` instruction.
+     *
+     * @param key The transient storage key.
+     * @return value The value stored at `key`.
+     */
     function _tload(bytes32 key) internal view returns (uint256 value) {
         assembly ("memory-safe") {
             value := tload(key)
         }
     }
 
+    /**
+     * @dev Decodes the `offset` and `length` fields from `sliceInfo`.
+     *
+     * The upper 128 bits encode `offset` and the lower 128 bits encode `length`,
+     * as specified by the Solver protocol.
+     *
+     * @param sliceInfo The packed slice information.
+     * @return offset The byte offset of the execution envelope slice.
+     * @return length The length of the execution envelope slice.
+     */
     function _getOffsetAndLength(uint256 sliceInfo) 
         internal 
         pure 
@@ -490,6 +594,17 @@ contract UniversalSolver is IUniversalSolver {
         return (sliceInfo >> 128, sliceInfo & SLICE_INFO_MASKING);
     }
 
+    /**
+     * @dev Derives a transient storage slot from a namespace and an index.
+     *
+     * The returned slot is equivalent to `keccak256(abi.encode(namespace, index))`
+     * while computing the hash directly in assembly to avoid the intermediate
+     * memory allocation performed by high-level ABI encoding.
+     *
+     * @param namespace The logical transient storage namespace.
+     * @param index The index within the namespace.
+     * @return slot The derived transient storage slot.
+     */
     function _getHashedSlot(
         bytes32 namespace,
         uint256 index
@@ -501,6 +616,16 @@ contract UniversalSolver is IUniversalSolver {
         }
     }
 
+    /**
+     * @dev Decodes an execution envelope into its Executor and Intent.
+     *
+     * The first 20 bytes of `intentInfo` encode the Executor address, while the
+     * remaining bytes encode the Intent.
+     *
+     * @param intentInfo The execution envelope encoded as `Executor || Intent`.
+     * @return executor The Executor address encoded in the first 20 bytes.
+     * @return intent The Intent bytes following the Executor address.
+     */
     function _decodeIntentInfo(
         bytes calldata intentInfo
     ) internal pure returns (
@@ -510,6 +635,18 @@ contract UniversalSolver is IUniversalSolver {
         return (address(bytes20(intentInfo[0 : 20])), intentInfo[20 : ]);
     }
 
+    /**
+     * @dev Returns a slice of `envelopeTx` representing the execution envelope.
+     *
+     * The slice is determined by the `offset` and `length` decoded from
+     * `sliceInfo`. The returned bytes consist of the Executor address followed
+     * by the Intent.
+     *
+     * @param offset The starting byte offset within `envelopeTx`.
+     * @param length The length of the execution envelope slice.
+     * @param envelopeTx The original envelope transaction.
+     * @return intentInfo The selected execution envelope slice.
+     */
     function _sliceEnvelopeTx(
         uint256 offset,
         uint256 length,
