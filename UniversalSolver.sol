@@ -27,7 +27,6 @@ interface IUniversalSolver {
 }
 
 contract UniversalSolver is IUniversalSolver {
-    address constant CALLBACK_MARKER = address(1);
     uint64 constant MAX_TOTAL_LENGTH = type(uint64).max;
     uint256 constant SLICE_INFO_MASKING = type(uint128).max;
     bytes32 constant USER_ENVELOPE_TX_SLOT = bytes32(erc7201("user.envelope.tx.slot"));
@@ -39,6 +38,7 @@ contract UniversalSolver is IUniversalSolver {
     address public transient initiator;
     uint256 public transient currIdx;
     address transient validSenderCallback;
+    bool transient callbackAccepted;
 
     event CacheUserEnvelopeTx(UserEnvelopeTx userEnvelopeTx);
     event CachePreContext(address indexed sender, address indexed executor, bytes preContext);
@@ -46,22 +46,19 @@ contract UniversalSolver is IUniversalSolver {
     event ValidateSenderSuccess(address indexed sender, bytes result);
     event ValidateSenderPhaseSuccess();
     event SenderCallbackSuccess(address indexed sender, bytes result);
-    event ValidateIntentSuccess(address indexed executor, bytes result);
-    event ValidateIntentPhaseSuccess();
+    event ExecuteIntentSuccess(address indexed executor, bytes result);
+    event ExecuteIntentPhaseSuccess();
 
     error Overflow();
     error Reentrancy();
     error InactiveSolver();
     error IntentNotAccepted();
-    error LengthTooShort(uint256 length);
     error TotalLengthTooLarge(uint256 totalLength);
-    error InitiatorIsMarker(address initiator);
-    error SenderIsMarker(address sender);
     error InvalidSender(address sender);
     error ValidateSenderFailed(bytes result);
     error ExecuteIntentFailed(bytes result);
-    error PostContextFailed(address executor, bytes reason);
-    error IntentAccepted(address executor, bytes intent);
+    error PreContextFailed(address executor, bytes reason);
+    error CallbackAlreadyAccepted(address executor, bytes intent);
     error InvalidIntent(address executor, bytes intent);
 
     modifier nonReentrant {
@@ -86,18 +83,16 @@ contract UniversalSolver is IUniversalSolver {
     }
 
     function senderCallback(bytes calldata intentInfo) external onlySolverActive {
-        require(msg.sender == validSenderCallback, InvalidSender(validSenderCallback));
+        require(msg.sender == validSenderCallback, InvalidSender(msg.sender));
         
         (address executor, bytes calldata intent) = _decodeIntentInfo(intentInfo);
 
-        if (validSenderCallback == CALLBACK_MARKER) revert IntentAccepted(executor, intent);
-        // Kiểm tra intent được user gọi có giống với intent đã được chỉ định trong UserIntent không.
+        if (callbackAccepted) revert CallbackAlreadyAccepted(executor, intent);
         unchecked {
             bytes32 intentHash = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + currIdx)));
             require(keccak256(intentInfo) == intentHash, InvalidIntent(executor, intent));
         }
-        // Đánh dấu intent này là hợp lệ để sẵn sàng giải quyết.
-        validSenderCallback = CALLBACK_MARKER;
+        callbackAccepted = true;
         emit SenderCallbackSuccess(msg.sender, intent);
     }
 
@@ -106,37 +101,35 @@ contract UniversalSolver is IUniversalSolver {
         uint256 currentIndex,
         address _initiator,
         bytes32[] memory executionHash,
-        UserEnvelopeTx[] memory userEnvelopeTx,
+        UserEnvelopeTx[] memory userEnvelopeTxs,
         bytes[] memory executorPreContext,
         bytes[] memory executorPostContext
     ) {
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
         executionHash = new bytes32[](length);
-        userEnvelopeTx = new UserEnvelopeTx[](length);
+        userEnvelopeTxs = new UserEnvelopeTx[](length);
         executorPreContext = new bytes[](length);
+        if (length > 0) executorPostContext = new bytes[](length - 1);
         unchecked {
             for (uint256 i = 0 ; i < length ; i++) {
                 executionHash[i] = bytes32(_tload(bytes32((uint256(INTENT_HASHES_SLOT) + 1) + i)));
-                userEnvelopeTx[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
+                userEnvelopeTxs[i] = _getUserEnvelopeTx(USER_ENVELOPE_TX_SLOT, i);
                 executorPreContext[i] = _getCacheData(_getHashedSlot(PRE_CONTEXT_SLOT, i));
                 if (i < length - 1) {
                     executorPostContext[i] = _getCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i));
                 }
             }
         }
-        return (phase, currIdx, initiator, executionHash, userEnvelopeTx, executorPreContext, executorPostContext);
+        return (phase, currIdx, initiator, executionHash, userEnvelopeTxs, executorPreContext, executorPostContext);
     }
 
     function _setContextPhase(UserEnvelopeTx[] calldata userEnvelopeTxs) internal {
-        require(msg.sender != CALLBACK_MARKER, InitiatorIsMarker(msg.sender));
         initiator = msg.sender;
         _tstore(USER_ENVELOPE_TX_SLOT, userEnvelopeTxs.length);
         _tstore(PRE_CONTEXT_SLOT, userEnvelopeTxs.length);
         _tstore(INTENT_HASHES_SLOT, userEnvelopeTxs.length);
         for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
             UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
-
-            require(userEnvelopeTx.sender != CALLBACK_MARKER, SenderIsMarker(userEnvelopeTx.sender));
 
             (uint256 offset, uint256 length) = _getOffsetAndLength(userEnvelopeTx.sliceInfo);
 
@@ -162,12 +155,14 @@ contract UniversalSolver is IUniversalSolver {
             (bool success, bytes memory result)
             = userEnvelopeTx.sender.call(userEnvelopeTx.envelopeTx);
             require(success, ValidateSenderFailed(result));
-            require(validSenderCallback == CALLBACK_MARKER, IntentNotAccepted());
+            require(callbackAccepted, IntentNotAccepted());
+            callbackAccepted = false;
 
             emit ValidateSenderSuccess(userEnvelopeTx.sender, result);
             _restoreFreePtr(ptr);
             unchecked { ++i; }
         }
+        validSenderCallback = address(0);
         _markPhase2Pass();
     }
 
@@ -175,7 +170,7 @@ contract UniversalSolver is IUniversalSolver {
         UserEnvelopeTx[] calldata userEnvelopeTxs
     ) internal {
         unchecked {
-            _tstore(POST_CONTEXT_SLOT, userEnvelopeTxs.length - 1);
+            if (userEnvelopeTxs.length > 0) _tstore(POST_CONTEXT_SLOT, userEnvelopeTxs.length - 1);
             for (uint256 i = 0 ; i < userEnvelopeTxs.length ; i++) {
                 uint256 ptr = _getFreePtr();
                 UserEnvelopeTx calldata userEnvelopeTx = userEnvelopeTxs[i];
@@ -190,18 +185,18 @@ contract UniversalSolver is IUniversalSolver {
                 currIdx = i;
                 (bool success, bytes memory result) = executor.call(intent);
                 require(success, ExecuteIntentFailed(result));
-                if (i < length - 1) _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), result);
-                emit ValidateIntentSuccess(executor, result);
-
+                if (i + 1 < userEnvelopeTxs.length) {
+                    _setCacheData(_getHashedSlot(POST_CONTEXT_SLOT, i), result);
+                }
+                emit ExecuteIntentSuccess(executor, result);
                 _restoreFreePtr(ptr);
             }
+            emit ExecuteIntentPhaseSuccess();
         }
-        emit ValidateIntentPhaseSuccess();
     }
 
     function _clearContext() internal {
         initiator = address(0);
-        validSenderCallback = address(0);
         currIdx = 0;
         uint256 length = _tload(USER_ENVELOPE_TX_SLOT);
         _tstore(USER_ENVELOPE_TX_SLOT, 0);
@@ -249,10 +244,10 @@ contract UniversalSolver is IUniversalSolver {
         bytes calldata intent
     ) internal {
         uint256 ptr = _getFreePtr();
-        (bool success, bytes memory PreContext) = executor.staticcall(intent);
-        require(success, PostContextFailed(executor, intent));
-        _setCacheData(_getHashedSlot(namespace, index), PreContext);
-        emit CachePreContext(sender, executor, PreContext);
+        (bool success, bytes memory preContext) = executor.staticcall(intent);
+        require(success, PreContextFailed(executor, preContext));
+        _setCacheData(_getHashedSlot(namespace, index), preContext);
+        emit CachePreContext(sender, executor, preContext);
         _restoreFreePtr(ptr);
     }
 
@@ -513,7 +508,6 @@ contract UniversalSolver is IUniversalSolver {
     ) internal pure returns (
         bytes calldata intentInfo
     ) {
-        require(length >= 20, LengthTooShort(length));
         return envelopeTx[offset : offset + length];
     }
 
